@@ -1,6 +1,7 @@
 # colreader.py
 
 import collections
+import collections.abc
 import csv
 
 class DataCollection(collections.abc.Sequence):

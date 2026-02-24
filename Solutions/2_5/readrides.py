@@ -1,6 +1,7 @@
 # readrides.py
 
 import csv
+import collections.abc
 
 def read_rides_as_tuples(filename):
     '''

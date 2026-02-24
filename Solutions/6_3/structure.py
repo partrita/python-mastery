@@ -9,8 +9,9 @@ class Structure:
     @staticmethod
     def _init():
         locs = sys._getframe(1).f_locals
-        self = locs.pop('self')
+        self = locs['self']
         for name, val in locs.items():
+            if name == 'self': continue
             setattr(self, name, val)
 
     def __setattr__(self, name, value):

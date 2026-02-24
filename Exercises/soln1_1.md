@@ -1,6 +1,4 @@
 # Exercise 1.1 - Solution
 
-Nothing here.  Just follow along with the exercise.
+Check [here](../Solutions/1_1/art.py)
 
-
-[Back](ex1_1.md)
