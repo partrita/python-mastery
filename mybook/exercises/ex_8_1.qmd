@@ -1,0 +1,794 @@
+\[ [Index](index.md) | [Exercise 7.6](ex7_6.md) | [Exercise 8.2](ex8_2.md) \]
+
+# Exercise 8.1
+
+*Objectives:*
+
+- Learn how to customize iteration using generators
+
+*Files Modified:* `structure.py`
+
+*Files Created:* `follow.py`
+
+## (a) A Simple Generator
+
+If you ever find yourself wanting to customize iteration, you should
+always think generator functions.  They're easy to write---simply make
+a function that carries out the desired iteration logic and uses `yield`
+to emit values.
+
+For example, try this generator that allows you to iterate over a
+range of numbers with fractional steps (something not supported by
+the `range()` builtin):
+
+```python
+>>> def frange(start,stop,step):
+        while start < stop:
+            yield start
+            start += step
+
+>>> for x in frange(0, 2, 0.25):
+        print(x, end=' ')
+
+0 0.25 0.5 0.75 1.0 1.25 1.5 1.75
+>>>
+```
+
+Iterating on a generator is a one-time operation. For example, here's
+what happen if you try to iterate twice:
+
+```python
+>>> f = frange(0, 2, 0.25)
+>>> for x in f:
+        print(x, end=' ')
+
+0 0.25 0.5 0.75 1.0 1.25 1.5 1.75
+>>> for x in f:
+        print(x, end=' ')
+
+>>>
+```
+
+If you want to iterate over the same sequence, you need to recreate the generator
+by calling `frange()` again.    Alternative, you could package everything into a class:
+
+```python
+>>> class FRange:
+        def __init__(self, start, stop, step):
+            self.start = start
+            self.stop = stop
+            self.step = step
+        def __iter__(self):
+            n = self.start
+            while n < self.stop:
+                yield n
+                n += self.step
+
+>>> f = FRange(0, 2, 0.25)
+>>> for x in f:
+        print(x, end=' ')
+
+0 0.25 0.5 0.75 1.0 1.25 1.5 1.75
+>>> for x in f:
+        print(x, end=' ')
+
+0 0.25 0.5 0.75 1.0 1.25 1.5 1.75
+>>>
+```
+
+## (b) Adding Iteration to Objects
+
+If you've created a custom class, you can make it support iteration by
+defining an `__iter__()` special method.  `__iter__()` returns an
+iterator as a result.  As shown in the previous example, an easy way
+to do it is to define `__iter__()` as a generator.
+
+In earlier exercises, you defined a `Structure` base class.
+Add an `__iter__()` method to this class that produces the attribute values
+in order. For example:
+
+```python
+class Structure(metaclass=StructureMeta):
+    ...
+    def __iter__(self):
+        for name in self._fields:
+            yield getattr(self, name)
+    ...
+```
+
+Once you've done this, you should be able to iterate over the instance
+attributes like this:
+
+```python
+>>> from stock import Stock
+>>> s = Stock('GOOG', 100, 490.1)
+>>> for val in s:
+        print(val)
+GOOG
+100
+490.1
+>>>
+```
+
+## (c) The Surprising Power of Iteration
+
+Python uses iteration in ways you might not expect.   Once you've added `__iter__()`
+to the `Structure` class, you'll find that it is easy to do all sorts of new 
+operations. For example, conversions to sequences and unpacking:
+
+```python
+>>> s = Stock('GOOG', 100, 490.1)
+>>> list(s)
+['GOOG', 100, 490.1]
+>>> tuple(s)
+('GOOG', 100, 490.1)
+>>> name, shares, price = s
+>>> name
+'GOOG'
+>>> shares
+100
+>>> price
+490.1
+>>> 
+```
+
+While we're at it, we can now add a comparison operator to our `Structure`
+class:
+
+```python
+# structure.py
+class Structure(metaclass=StructureMeta):
+    ...
+    def __eq__(self, other):
+        return isinstance(other, type(self)) and tuple(self) == tuple(other)
+    ...
+```
+
+You should now be able to compare objects:
+
+```python
+>>> a = Stock('GOOG', 100, 490.1)
+>>> b = Stock('GOOG', 100, 490.1)
+>>> a == b
+True
+>>>
+```
+
+Try running your `teststock.py` unit tests again.  Everything should be passing now.
+Excellent.
+
+## (d) Monitoring a streaming data source
+
+Generators can also be a useful way to simply produce a stream of
+data.  In this part, we'll explore this idea by writing a generator to
+watch a log file.  To start, follow the next instructions carefully.
+
+The program `Data/stocksim.py` is a program that
+simulates stock market data.  As output, the program constantly writes
+real-time data to a file `stocklog.csv`.  In a
+command window (not IDLE) go into the `Data/` directory and run this program:
+
+```
+% python3 stocksim.py
+```
+
+If you are on Windows, just locate the `stocksim.py` program and
+double-click on it to run it.  Now, forget about this program (just
+let it run).  Again, just let this program run in the background---it
+will run for several hours (you shouldn't need to worry about it).
+
+Once the above program is running, let's write a little program to
+open the file, seek to the end, and watch for new output.  Create a
+file `follow.py` and put this code in it:
+
+```python
+# follow.py
+import os
+import time
+f = open('Data/stocklog.csv')
+f.seek(0, os.SEEK_END)   # Move file pointer 0 bytes from end of file
+
+while True:
+    line = f.readline()
+    if line == '':
+        time.sleep(0.1)   # Sleep briefly and retry
+        continue
+    fields = line.split(',')
+    name = fields[0].strip('"')
+    price = float(fields[1])
+    change = float(fields[4])
+    if change < 0:
+        print('%10s %10.2f %10.2f' % (name, price, change))
+```
+
+If you run the program, you'll see a real-time stock ticker.  Under the covers,
+this code is kind of like the Unix `tail -f` command that's used to watch a log file.
+
+**Note:** The use of the `readline()` method in this example is
+somewhat unusual in that it is not the usual way of reading lines from
+a file (normally you would just use a `for`-loop).  However, in
+this case, we are using it to repeatedly probe the end of the file to
+see if more data has been added (`readline()` will either
+return new data or an empty string).
+
+If you look at the code carefully, the first part of the code is
+producing lines of data whereas the statements at the end of the
+`while` loop are consuming the data.  A major feature of generator
+functions is that you can move all of the data production code into a
+reusable function.
+
+Modify the code so that the file-reading is performed by 
+a generator function `follow(filename)`.   Make it so the following code
+works:
+
+```python
+>>> for line in follow('Data/stocklog.csv'):
+          print(line, end='')
+   
+... Should see lines of output produced here ...
+```
+
+Modify the stock ticker code so that it looks like this:
+
+```python
+for line in follow('Data/stocklog.csv'):
+    fields = line.split(',')
+    name = fields[0].strip('"')
+    price = float(fields[1])
+    change = float(fields[4])
+    if change < 0:
+        print('%10s %10.2f %10.2f' % (name, price, change))
+```
+
+**Discussion**
+
+Something very powerful just happened here.  You moved an interesting iteration pattern
+(reading lines at the end of a file) into its own little function.   The `follow()` function
+is now this completely general purpose utility that you can use in any program.  For
+example, you could use it to watch server logs, debugging logs, and other similar data sources.
+That's kind of cool.
+
+\[ [Solution](soln8_1.md) | [Index](index.md) | [Exercise 7.6](ex7_6.md) | [Exercise 8.2](ex8_2.md) \]
+
+`...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+## (b) Adding Iteration to Objects
+
+```python
+# structure.py
+...
+        
+class Structure(metaclass=StructureMeta):
+    ...
+    def __iter__(self):
+        for name in self._fields:
+            yield getattr(self, name)
+    ...
+```
+
+## (c) The Surprising Power of Iteration
+
+```python
+# structure.py
+...
+        
+class Structure(metaclass=StructureMeta):
+    ...
+    def __eq__(self, other):
+        return isinstance(other, type(self)) and tuple(self) == tuple(other)
+    ...
+```
+
+## (d) Monitoring a streaming data source
+
+```python
+# follow.py
+import os
+import time
+
+def follow(filename):
+    '''
+    Generator that produces a sequence of lines being written at the end of a file.
+    '''
+    with open(filename,'r') as f:
+        f.seek(0,os.SEEK_END)
+        while True:
+             line = f.readline()
+             if line == '':
+                 time.sleep(0.1)    # Sleep briefly to avoid busy wait
+                 continue
+             yield line
+
+# Example use
+if __name__ == '__main__':
+    for line in follow('Data/stocklog.csv'):
+        row = line.split(',')
+        name = row[0].strip('"')
+        price = float(row[1])
+        change = float(row[4])
+        if change < 0:
+            print('%10s %10.2f %10.2f' % (name, price, change))
+```
+
+**Discussion**
+
+The `time.sleep()` function is being used here to avoid busy-waiting
+on the CPU (e.g., sitting in an infinite loop with 100% CPU use while waiting for new lines to arrive)
+
+
+
+
+
+## Solution Code
+
+### follow.py
+
+```python
+# follow.py
+import os
+import time
+
+def follow(filename):
+    '''
+    Generator that produces a sequence of lines being written at the end of a file.
+    '''
+    with open(filename,'r') as f:
+        f.seek(0,os.SEEK_END)
+        while True:
+             line = f.readline()
+             if line == '':
+                 time.sleep(0.1)    # Sleep briefly to avoid busy wait
+                 continue
+             yield line
+
+# Example use
+if __name__ == '__main__':
+    for line in follow('../../Data/stocklog.csv'):
+        fields = line.split(',')
+        name = fields[0].strip('"')
+        price = float(fields[1])
+        change = float(fields[4])
+        if change < 0:
+            print('%10s %10.2f %10.2f' % (name, price, change))
+
+
+```
+
+### reader.py
+
+```python
+# reader.py
+
+import csv
+import logging
+
+log = logging.getLogger(__name__)
+
+def convert_csv(lines, converter, *, headers=None):
+    rows = csv.reader(lines)
+    if headers is None:
+        headers = next(rows)
+
+    records = []
+    for rowno, row in enumerate(rows, start=1):
+        try:
+            records.append(converter(headers, row))
+        except ValueError as e:
+            log.warning('Row %s: Bad row: %s', rowno, row)
+            log.debug('Row %s: Reason: %s', rowno, row)
+    return records
+
+def csv_as_dicts(lines, types, *, headers=None):
+    return convert_csv(lines, 
+                       lambda headers, row: { name: func(val) for name, func, val in zip(headers, types, row) })
+
+def csv_as_instances(lines, cls, *, headers=None):
+    return convert_csv(lines,
+                       lambda headers, row: cls.from_row(row))
+
+def read_csv_as_dicts(filename, types, *, headers=None):
+    '''
+    Read CSV data into a list of dictionaries with optional type conversion
+    '''
+    with open(filename) as file:
+        return csv_as_dicts(file, types, headers=headers)
+
+def read_csv_as_instances(filename, cls, *, headers=None):
+    '''
+    Read CSV data into a list of instances
+    '''
+    with open(filename) as file:
+        return csv_as_instances(file, cls, headers=headers)
+
+
+```
+
+### stock.py
+
+```python
+# stock.py
+
+from structure import Structure
+from validate import String, PositiveInteger, PositiveFloat
+
+class Stock(Structure):
+    name = String('name')
+    shares = PositiveInteger('shares')
+    price = PositiveFloat('price')
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+
+if __name__ == '__main__':
+    from reader import read_csv_as_instances
+    from tableformat import create_formatter, print_table
+    
+    portfolio = read_csv_as_instances('../../Data/portfolio.csv', Stock)
+    formatter = create_formatter('text')
+    print_table(portfolio, ['name','shares','price'], formatter)
+
+```
+
+### structure.py
+
+```python
+# structure.py
+
+from validate import Validator, validated
+from collections import ChainMap
+
+class StructureMeta(type):
+    @classmethod
+    def __prepare__(meta, clsname, bases):
+        return ChainMap({}, Validator.validators)
+        
+    @staticmethod
+    def __new__(meta, name, bases, methods):
+        methods = methods.maps[0]
+        return super().__new__(meta, name, bases, methods)
+
+class Structure(metaclass=StructureMeta):
+    _fields = ()
+    _types = ()
+
+    def __setattr__(self, name, value):
+        if name.startswith('_') or name in self._fields:
+            super().__setattr__(name, value)
+        else:
+            raise AttributeError('No attribute %s' % name)
+
+    def __repr__(self):
+        return '%s(%s)' % (type(self).__name__,
+                           ', '.join(repr(getattr(self, name)) for name in self._fields))
+
+    def __iter__(self):
+        for name in self._fields:
+            yield getattr(self, name)
+
+    def __eq__(self, other):
+        return isinstance(other, type(self)) and tuple(self) == tuple(other)
+
+    @classmethod
+    def from_row(cls, row):
+        rowdata = [ func(val) for func, val in zip(cls._types, row) ]
+        return cls(*rowdata)
+
+
+    @classmethod
+    def create_init(cls):
+        '''
+        Create an __init__ method from _fields
+        '''
+        args = ','.join(cls._fields)
+        code = f'def __init__(self, {args}):\n'
+        for name in cls._fields:
+            code += f'    self.{name} = {name}\n'
+        locs = { }
+        exec(code, locs)
+        cls.__init__ = locs['__init__']
+
+    @classmethod
+    def __init_subclass__(cls):
+        # Apply the validated decorator to subclasses
+        validate_attributes(cls)
+
+def validate_attributes(cls):
+    '''
+    Class decorator that scans a class definition for Validators
+    and builds a _fields variable that captures their definition order.
+    '''
+    validators = []
+    for name, val in vars(cls).items():
+        if isinstance(val, Validator):
+            validators.append(val)
+
+        # Apply validated decorator to any callable with annotations
+        elif callable(val) and val.__annotations__:
+            setattr(cls, name, validated(val))
+
+    # Collect all of the field names
+    cls._fields = tuple([v.name for v in validators])
+
+    # Collect type conversions. The lambda x:x is an identity
+    # function that's used in case no expected_type is found.
+    cls._types = tuple([ getattr(v, 'expected_type', lambda x: x)
+                   for v in validators ])
+
+    # Create the __init__ method
+    if cls._fields:
+        cls.create_init()
+
+    
+    return cls
+
+def typed_structure(clsname, **validators):
+    cls = type(clsname, (Structure,), validators)
+    return cls
+
+```
+
+### teststock.py
+
+```python
+# teststock.py
+
+import stock
+import unittest
+
+class TestStock(unittest.TestCase):
+    def test_create(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_create_keyword(self):
+        s = stock.Stock(name='GOOG', shares=100, price=490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+        
+    def test_cost(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.cost, 49010.0)
+
+    def test_sell(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        s.sell(25)
+        self.assertEqual(s.shares, 75)
+
+    def test_from_row(self):
+        s = stock.Stock.from_row(['GOOG','100','490.1'])
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_repr(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(repr(s), "Stock('GOOG', 100, 490.1)")
+
+    def test_eq(self):
+        a = stock.Stock('GOOG', 100, 490.1)
+        b = stock.Stock('GOOG', 100, 490.1)
+        self.assertTrue(a==b)
+
+    # Tests for failure conditions
+    def test_shares_badtype(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(TypeError):
+            s.shares = '50'
+
+    def test_shares_badvalue(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(ValueError):
+            s.shares = -50
+
+    def test_price_badtype(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(TypeError):
+            s.price = '45.23'
+
+    def test_price_badvalue(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(ValueError):
+            s.price = -45.23
+
+    def test_bad_attribute(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(AttributeError):
+            s.share = 100
+
+if __name__ == '__main__':
+    unittest.main()
+
+```
+
+### validate.py
+
+```python
+# validate.py
+
+class Validator:
+    def __init__(self, name=None):
+        self.name = name
+
+    def __set_name__(self, cls, name):
+        self.name = name
+
+    @classmethod
+    def check(cls, value):
+        return value
+
+    def __set__(self, instance, value):
+        instance.__dict__[self.name] = self.check(value)
+
+    # Collect all derived classes into a dict
+    validators = { }
+    @classmethod
+    def __init_subclass__(cls):
+        cls.validators[cls.__name__] = cls
+
+class Typed(Validator):
+    expected_type = object
+    @classmethod
+    def check(cls, value):
+        if not isinstance(value, cls.expected_type):
+            raise TypeError(f'expected {cls.expected_type}')
+        return super().check(value)
+
+_typed_classes = [
+    ('Integer', int),
+    ('Float', float),
+    ('String', str) ]
+
+globals().update((name, type(name, (Typed,), {'expected_type':ty}))
+                 for name, ty in _typed_classes)
+
+class Positive(Validator):
+    @classmethod
+    def check(cls, value):
+        if value < 0:
+            raise ValueError('must be >= 0')
+        return super().check(value)
+
+class NonEmpty(Validator):
+    @classmethod
+    def check(cls, value):
+        if len(value) == 0:
+            raise ValueError('must be non-empty')
+        return super().check(value)
+
+class PositiveInteger(Integer, Positive):
+    pass
+
+class PositiveFloat(Float, Positive):
+    pass
+
+class NonEmptyString(String, NonEmpty):
+    pass
+
+from inspect import signature
+from functools import wraps
+
+def isvalidator(item):
+    return isinstance(item, type) and issubclass(item, Validator)
+
+def validated(func):
+    sig = signature(func)
+
+    # Gather the function annotations
+    annotations = { name:val for name, val in func.__annotations__.items()
+                    if isvalidator(val) }
+
+    # Get the return annotation (if any)
+    retcheck = annotations.pop('return', None)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        bound = sig.bind(*args, **kwargs)
+        errors = []
+
+        # Enforce argument checks
+        for name, validator in annotations.items():
+            try:
+                validator.check(bound.arguments[name])
+            except Exception as e:
+                errors.append(f'  {name}: {e}')
+
+        if errors:
+            raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+        result = func(*args, **kwargs)
+
+        # Enforce return check (if any)
+        if retcheck:
+            try:
+                retcheck.check(result)
+            except Exception as e:
+                raise TypeError(f'Bad return: {e}') from None
+        return result
+
+    return wrapper
+
+def enforce(**annotations):
+    retcheck = annotations.pop('return_', None)
+
+    def decorate(func):
+        sig = signature(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            bound = sig.bind(*args, **kwargs)
+            errors = []
+
+            # Enforce argument checks
+            for name, validator in annotations.items():
+                try:
+                    validator.check(bound.arguments[name])
+                except Exception as e:
+                    errors.append(f'    {name}: {e}')
+
+            if errors:
+                raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+            result = func(*args, **kwargs)
+
+            if retcheck:
+                try:
+                    retcheck.check(result)
+                except Exception as e:
+                    raise TypeError(f'Bad return: {e}') from None
+            return result
+        return wrapper
+    return decorate
+
+# Examples
+if __name__ == '__main__':
+    @validated
+    def add(x:Integer, y:Integer) -> Integer:
+        return x + y
+
+    @validated
+    def div(x:Integer, y:Integer) -> Integer:
+        return x / y
+
+    @enforce(x=Integer, y=Integer)
+    def sub(x, y):
+        return x - y
+
+    class Stock:
+        name = NonEmptyString()
+        shares = PositiveInteger()
+        price = PositiveFloat()
+        def __init__(self, name, shares, price):
+            self.name = name
+            self.shares = shares
+            self.price = price
+
+        def __repr__(self):
+            return f'Stock({self.name!r}, {self.shares!r}, {self.price!r})'
+
+        @property
+        def cost(self):
+            return self.shares * self.price
+
+        @validated
+        def sell(self, nshares:PositiveInteger):
+            self.shares -= nshares
+
+    
+
+    
+
+```
+

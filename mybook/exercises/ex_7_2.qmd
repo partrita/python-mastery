@@ -1,0 +1,586 @@
+\[ [Index](index.md) | [Exercise 7.1](ex7_1.md) | [Exercise 7.3](ex7_3.md) \]
+
+# Exercise 7.2
+
+*Objectives:*
+
+- Decorator chaining
+- Defining decorators that accept arguments.
+
+*Files Modified:* `logcall.py`, `validate.py`
+
+## (a) Copying Metadata
+
+When a function gets wrapped by a decorator, you often lose
+information about the name of the function, documentation strings, and
+other details.  Verify this:
+
+```python
+>>> @logged
+    def add(x,y):
+        'Adds two things'
+        return x+y
+
+>>> add
+<function wrapper at 0x4439b0>
+>>> help(add)
+... look at the output ...
+>>>
+```
+
+Fix the definition of the `logged` decorator so that it copies
+function metadata properly.  To do this, use the `@wraps(func)`
+decorator as shown in the notes.
+
+After you're done, make sure the decorator preserves the function name
+and doc string.
+
+```python
+>>> @logged
+    def add(x,y):
+        'Adds two things'
+        return x+y
+
+>>> add
+<function add at 0x4439b0>
+>>> add.__doc__
+'Adds two things'
+>>>
+```
+
+Fix the `@validated` decorator you wrote earlier so that it also preserves
+metadata using `@wraps(func)`.
+
+## (b) Your first decorator with arguments
+
+The `@logged` decorator you defined earlier always just
+prints a simple message with the function name.
+Suppose that you wanted the user to be able to specify a 
+custom message of some sort.
+
+Define a new decorator `@logformat(fmt)` that accepts
+a format string as an argument and uses `fmt.format(func=func)` to
+format a supplied function into a log message:
+
+```python
+# sample.py
+...
+from logcall import logformat
+
+@logformat('{func.__code__.co_filename}:{func.__name__}')
+def mul(x,y):
+    return x*y
+```
+
+To do this, you need to define a decorator that takes an argument.
+This is what it should look like when you test it:
+
+```python
+>>> import sample
+Adding logging to add
+Adding logging to sub
+Adding logging to mul
+>>> sample.add(2,3)
+Calling add
+5
+>>> sample.mul(2,3)
+sample.py:mul
+6
+>>>
+```
+
+To further simplify the code, show how you can define the original `@logged` decorator
+using the the `@logformat` decorator. 
+
+## (c) Multiple decorators and methods
+
+Things can get a bit dicey when decorators are applied to methods in a
+class.  Try applying your `@logged` decorator to the methods in the
+following class.
+
+```python
+class Spam:
+    @logged
+    def instance_method(self):
+        pass
+
+    @logged
+    @classmethod
+    def class_method(cls):
+        pass
+
+    @logged
+    @staticmethod
+    def static_method():
+        pass
+
+    @logged
+    @property
+    def property_method(self):
+        pass
+```
+
+Does it even work at all? (hint: no). Is there any way to fix the code so
+that it works?  For example, can you make it so the following example
+works?
+
+```python
+>>> s = Spam()
+>>> s.instance_method()
+instance_method
+>>> Spam.class_method()
+class_method
+>>> Spam.static_method()
+static_method
+>>> s.property_method
+property_method
+>>>
+```
+
+## (d) Validation (Redux)
+
+In the last exercise, you wrote a `@validated` decorator that enforced
+type annotations. For example:
+
+```python
+@validated
+def add(x: Integer, y:Integer) -> Integer:
+    return x + y
+```
+
+Make a new decorator `@enforce()` that enforces types specified
+via keyword arguments to the decorator instead.  For example:
+
+```python
+@enforce(x=Integer, y=Integer, return_=Integer)
+def add(x, y):
+    return x + y
+```
+
+The resulting behavior of the decorated function should be identical.
+Note: Make the `return_` keyword specify the return type.  `return` is
+a Python reserved word so you have to pick a slightly different name.
+
+
+**Discussion**
+
+Writing robust decorators is often a lot harder than it looks.
+Recommended reading: [How you implemented your Python decorator is wrong](https://github.com/GrahamDumpleton/wrapt/blob/develop/blog/01-how-you-implemented-your-python-decorator-is-wrong.md)
+
+\[ [Solution](soln7_2.md) | [Index](index.md) | [Exercise 7.1](ex7_1.md) | [Exercise 7.3](ex7_3.md) \]
+
+`...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+## (a) Copying Metadata
+
+```python
+# logcall.py
+
+from functools import wraps
+
+def logged(func):
+    print('Adding logging to', func.__name__)
+    @wraps(func)
+    def wrapper(*args,**kwargs):
+        print('Calling', func.__name__)
+        return func(*args,**kwargs)
+    return wrapper
+```
+
+## (b) Decorators with arguments
+
+```python
+# logcall.py
+
+from functools import wraps
+...
+def logformat(fmt):
+    def logged(func):
+        print('Adding logging to', func.__name__)
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            print(fmt.format(func=func))
+            return func(*args, **kwargs)
+        return wrapper
+    return logged
+```
+
+The earlier `@logged` decorator can be rewritten as follows:
+
+```python
+logged = logformat('Calling {func.__name__}')
+```
+
+## (c) Decorators and methods
+
+You can get the code to work if you interchange the order of the 
+decorators.  For example:
+
+```python
+from logcall import logged
+
+class Spam:
+    @logged
+    def instance_method(self):
+        pass
+
+    @classmethod
+    @logged
+    def class_method(cls):
+        pass
+
+    @staticmethod
+    @logged
+    def static_method():
+        pass
+
+    @property
+    @logged
+    def property_method(self):
+        pass
+```
+
+Ponder why it doesn't work in the original order.  Is there any way to make
+the `@logged` decorator work regardless of the order in which its applied?
+
+## (d) Validation (Redux)
+
+```python
+# validate.py
+...
+
+from inspect import signature
+from functools import wraps
+
+def validated(func):
+    sig = signature(func)
+
+    # Gather the function annotations
+    annotations = dict(func.__annotations__)
+
+    # Get the return annotation (if any)
+    retcheck = annotations.pop('return', None)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        bound = sig.bind(*args, **kwargs)
+        errors = []
+
+        # Enforce argument checks
+        for name, validator in annotations.items():
+            try:
+                validator.check(bound.arguments[name])
+            except Exception as e:
+                errors.append(f'    {name}: {e}')
+
+        if errors:
+            raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+        result = func(*args, **kwargs)
+
+        # Enforce return check (if any)
+        if retcheck:
+            try:
+                retcheck.check(result)
+            except Exception as e:
+                raise TypeError(f'Bad return: {e}') from None
+        return result
+
+    return wrapper
+
+def enforce(**annotations):
+    retcheck = annotations.pop('return_', None)
+
+    def decorate(func):
+        sig = signature(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            bound = sig.bind(*args, **kwargs)
+            errors = []
+
+            # Enforce argument checks
+            for name, validator in annotations.items():
+                try:
+                    validator.check(bound.arguments[name])
+                except Exception as e:
+                    errors.append(f'    {name}: {e}')
+
+            if errors:
+                raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+            result = func(*args, **kwargs)
+
+            if retcheck:
+                try:
+                    retcheck.check(result)
+                except Exception as e:
+                    raise TypeError(f'Bad return: {e}') from None
+            return result
+        return wrapper
+    return decorate
+```
+
+
+
+
+
+
+## Solution Code
+
+### logcall.py
+
+```python
+# logcall.py
+
+from functools import wraps
+
+def logformat(fmt):
+    def logged(func):
+        print('Adding logging to', func.__name__)
+        @wraps(func)
+        def wrapper(*args,**kwargs):
+            print(fmt.format(func=func))
+            return func(*args, **kwargs)
+        return wrapper
+    return logged
+
+# Original no-argument @logged decorator defined in terms of the more
+# general @logformat decorator
+
+logged = logformat('Calling {func.__name__}')
+
+
+        
+
+```
+
+### sample.py
+
+```python
+# sample.py
+
+from logcall import logged, logformat
+
+@logged
+def add(x,y):
+    return x+y
+
+@logged
+def sub(x,y):
+    return x-y
+
+@logformat('{func.__code__.co_filename}:{func.__name__}')
+def mul(x,y):
+    return x*y
+
+```
+
+### spam.py
+
+```python
+from logcall import logged
+
+class Spam:
+    @logged
+    def instance_method(self):
+        pass
+
+    @classmethod
+    @logged
+    def class_method(cls):
+        pass
+
+    @staticmethod
+    @logged
+    def static_method():
+        pass
+
+    @property
+    @logged
+    def property_method(self):
+        pass
+
+```
+
+### validate.py
+
+```python
+# validate.py
+
+class Validator:
+    def __init__(self, name=None):
+        self.name = name
+
+    def __set_name__(self, cls, name):
+        self.name = name
+
+    @classmethod
+    def check(cls, value):
+        return value
+
+    def __set__(self, instance, value):
+        instance.__dict__[self.name] = self.check(value)
+
+class Typed(Validator):
+    expected_type = object
+    @classmethod
+    def check(cls, value):
+        if not isinstance(value, cls.expected_type):
+            raise TypeError(f'expected {cls.expected_type}')
+        return super().check(value)
+
+class Integer(Typed):
+    expected_type = int
+
+class Float(Typed):
+    expected_type = float
+
+class String(Typed):
+    expected_type = str
+
+class Positive(Validator):
+    @classmethod
+    def check(cls, value):
+        if value < 0:
+            raise ValueError('must be >= 0')
+        return super().check(value)
+
+class NonEmpty(Validator):
+    @classmethod
+    def check(cls, value):
+        if len(value) == 0:
+            raise ValueError('must be non-empty')
+        return super().check(value)
+
+class PositiveInteger(Integer, Positive):
+    pass
+
+class PositiveFloat(Float, Positive):
+    pass
+
+class NonEmptyString(String, NonEmpty):
+    pass
+
+
+from inspect import signature
+from functools import wraps
+
+def isvalidator(item):
+    return isinstance(item, type) and issubclass(item, Validator)
+
+def validated(func):
+    sig = signature(func)
+
+    # Gather the function annotations
+    annotations = { name:val for name, val in func.__annotations__.items()
+                    if isvalidator(val) }
+
+    # Get the return annotation (if any)
+    retcheck = annotations.pop('return', None)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        bound = sig.bind(*args, **kwargs)
+        errors = []
+
+        # Enforce argument checks
+        for name, validator in annotations.items():
+            try:
+                validator.check(bound.arguments[name])
+            except Exception as e:
+                errors.append(f'  {name}: {e}')
+
+        if errors:
+            raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+        result = func(*args, **kwargs)
+
+        # Enforce return check (if any)
+        if retcheck:
+            try:
+                retcheck.check(result)
+            except Exception as e:
+                raise TypeError(f'Bad return: {e}') from None
+        return result
+
+    return wrapper
+
+def enforce(**annotations):
+    retcheck = annotations.pop('return_', None)
+
+    def decorate(func):
+        sig = signature(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            bound = sig.bind(*args, **kwargs)
+            errors = []
+
+            # Enforce argument checks
+            for name, validator in annotations.items():
+                try:
+                    validator.check(bound.arguments[name])
+                except Exception as e:
+                    errors.append(f'    {name}: {e}')
+
+            if errors:
+                raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+            result = func(*args, **kwargs)
+
+            if retcheck:
+                try:
+                    retcheck.check(result)
+                except Exception as e:
+                    raise TypeError(f'Bad return: {e}') from None
+            return result
+        return wrapper
+    return decorate
+
+# Examples
+if __name__ == '__main__':
+    @validated
+    def add(x:Integer, y:Integer) -> Integer:
+        return x + y
+
+    @validated
+    def div(x:Integer, y:Integer) -> Integer:
+        return x / y
+
+    @enforce(x=Integer, y=Integer)
+    def sub(x, y):
+        return x - y
+
+    class Stock:
+        name = NonEmptyString()
+        shares = PositiveInteger()
+        price = PositiveFloat()
+        def __init__(self, name, shares, price):
+            self.name = name
+            self.shares = shares
+            self.price = price
+
+        def __repr__(self):
+            return f'Stock({self.name!r}, {self.shares!r}, {self.price!r})'
+
+        @property
+        def cost(self):
+            return self.shares * self.price
+
+        @validated
+        def sell(self, nshares:PositiveInteger):
+            self.shares -= nshares
+
+    
+
+    
+
+```
+

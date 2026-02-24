@@ -1,0 +1,3 @@
+# Functions, Errors, and Testing
+
+This section covers exercises for Functions, Errors, and Testing.

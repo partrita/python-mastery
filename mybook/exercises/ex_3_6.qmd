@@ -1,0 +1,314 @@
+\[ [Index](index.md) | [Exercise 3.5](ex3_5.md) | [Exercise 3.7](ex3_7.md) \]
+
+# Exercise 3.6
+
+*Objectives:*
+
+- Learn how to customize the behavior of objects by redefining special methods.
+- Change the way that user-defined objects get printed
+- Make objects comparable
+- Create a context manager
+
+*Files Created:* None
+
+*Files Modified:* `stock.py`
+
+## (a) Better output for representing objects
+
+All Python objects have two string representations.  The first
+representation is created by string conversion via `str()`
+(which is called by `print`).   The string representation is
+usually a nicely formatted version of the object meant for humans.
+The second representation is a code representation of the object
+created by `repr()` (or simply by viewing a value in the
+interactive shell).   The code representation typically shows you the
+code that you have to type to get the object.  Here is an example
+that illustrates using dates:
+
+```python
+>>> from datetime import date
+>>> d = date(2008, 7, 5)
+>>> print(d)              # uses str()
+2008-07-05
+>>> d    # uses repr()
+datetime.date(2008, 7, 5)
+>>>
+```
+
+There are several techniques for obtaining the `repr()` string
+in output:
+
+```python
+>>> print('The date is', repr(d))
+The date is datetime.date(2008, 7, 5)
+>>> print(f'The date is {d!r}')
+The date is datetime.date(2008, 7, 5)
+>>> print('The date is %r' % d)
+The date is datetime.date(2008, 7, 5)
+>>> 
+```
+
+Modify the `Stock` object that you've created so that
+the `__repr__()` method
+produces more useful output.  For example:
+
+```python
+>>> goog = Stock('GOOG', 100, 490.10)
+>>> goog
+Stock('GOOG', 100, 490.1)
+>>>
+```
+
+See what happens when you read a portfolio of stocks and view the
+resulting list after you have made these changes.  For example:
+
+```python
+>>> import stock, reader
+>>> portfolio = reader.read_csv_as_instances('Data/portfolio.csv', stock.Stock)
+>>> portfolio
+[Stock('AA', 100, 32.2), Stock('IBM', 50, 91.1), Stock('CAT', 150, 83.44), Stock('MSFT', 200, 51.23), 
+ Stock('GE', 95, 40.37), Stock('MSFT', 50, 65.1), Stock('IBM', 100, 70.44)]
+>>>
+```
+
+## (b) Making objects comparable
+
+What happens if you create two identical `Stock` objects and try to compare them? Find out:
+
+```python
+>>> a = Stock('GOOG', 100, 490.1)
+>>> b = Stock('GOOG', 100, 490.1)
+>>> a == b
+False
+>>>
+```
+
+You can fix this by giving the `Stock` class an `__eq__()` method.  For example:
+
+```python
+class Stock:
+    ...
+    def __eq__(self, other):
+        return isinstance(other, Stock) and ((self.name, self.shares, self.price) == 
+                                             (other.name, other.shares, other.price))
+    ...
+```
+
+Make this change and try comparing two objects again. 
+
+## (c) A Context Manager
+
+In [Exercise 3.5](ex3_5.md), you made it possible for users to make
+nicely formatted tables.  For example:
+
+```python
+>>> from tableformat import create_formatter
+>>> formatter = create_formatter('text')
+>>> print_table(portfolio, ['name','shares','price'], formatter)
+      name     shares      price
+`...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+## (a) Better output for printing objects
+
+```python
+# stock.py
+
+class Stock:
+    ...
+
+    def __repr__(self):
+        # Note: The !r format code produces the repr() string
+        return f'{type(self).__name__}({self.name!r}, {self.shares!r}, {self.price!r})'
+    ...
+```
+
+## (b) Making Objects Comparable
+
+```python
+class Stock:
+    ...
+    def __eq__(self, other):
+        return isinstance(other, Stock) and ((self.name, self.shares, self.price) ==
+                                 (other.name, other.shares, other.price))
+    ...
+```
+
+## (c) Context Managers
+
+Code is given in the exercise.
+
+
+
+
+
+## Solution Code
+
+### reader.py
+
+```python
+# reader.py
+
+import csv
+
+def read_csv_as_dicts(filename, types):
+    '''
+    Read a CSV file into a list of dicts with column type conversion
+    '''
+    records = []
+    with open(filename) as f:
+        rows = csv.reader(f)
+        headers = next(rows)
+        for row in rows:
+            record = { name: func(val) for name, func, val in zip(headers, types, row) }
+            records.append(record)
+    return records
+
+def read_csv_as_instances(filename, cls):
+    '''
+    Read a CSV file into a list of instances
+    '''
+    records = []
+    with open(filename) as f:
+        rows = csv.reader(f)
+        headers = next(rows)
+        for row in rows:
+            records.append(cls.from_row(row))
+    return records
+
+```
+
+### stock.py
+
+```python
+# stock.py
+
+class Stock:
+    __slots__ = ('name','_shares','_price')
+    _types = (str, int, float)
+    def __init__(self, name, shares, price):
+        self.name = name
+        self.shares = shares
+        self.price = price
+
+    def __repr__(self):
+        # Note: The !r format code produces the repr() string
+        return f'{type(self).__name__}({self.name!r}, {self.shares!r}, {self.price!r})'
+
+    def __eq__(self, other):
+        return isinstance(other, Stock) and ((self.name, self.shares, self.price) ==
+                (other.name, other.shares, other.price))
+
+    @classmethod
+    def from_row(cls, row):
+        values = [func(val) for func, val in zip(cls._types, row)]
+        return cls(*values)
+
+    @property
+    def shares(self):
+        return self._shares
+    @shares.setter
+    def shares(self, value):
+        if not isinstance(value, self._types[1]):
+            raise TypeError(f'Expected {self._types[1].__name__}')
+        if value < 0:
+            raise ValueError('shares must be >= 0')
+        self._shares = value
+
+    @property
+    def price(self):
+        return self._price
+    @price.setter
+    def price(self, value):
+        if not isinstance(value, self._types[2]):
+            raise TypeError(f'Expected {self._types[2].__name__}')
+        if value < 0:
+            raise ValueError('price must be >= 0')
+        self._price = value
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+
+# Sample
+if __name__ == '__main__':
+    import reader
+    from tableformat import create_formatter, print_table
+
+    portfolio = reader.read_csv_as_instances('../../Data/portfolio.csv', Stock)
+    formatter = create_formatter('text')
+    print_table(portfolio,['name','shares','price'], formatter)
+
+```
+
+### tableformat.py
+
+```python
+# tableformat.py
+
+def print_table(records, fields, formatter):
+    formatter.headings(fields)
+    for r in records:
+        rowdata = [getattr(r, fieldname) for fieldname in fields]
+        formatter.row(rowdata)
+
+class TableFormatter:
+    def headings(self, headers):
+        raise NotImplementedError()
+
+    def row(self, rowdata):
+        raise NotImplementedError()
+
+class TextTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print(' '.join('%10s' % h for h in headers))
+        print(('-'*10 + ' ')*len(headers))
+    
+    def row(self, rowdata):
+        print(' '.join('%10s' % d for d in rowdata))
+
+class CSVTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print(','.join(headers))
+
+    def row(self, rowdata):
+        print(','.join(str(d) for d in rowdata))
+
+class HTMLTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print('<tr>', end=' ')
+        for h in headers:
+            print('<th>%s</th>' % h, end=' ')
+        print('</tr>')
+
+    def row(self, rowdata):
+        print('<tr>', end=' ')
+        for d in rowdata:
+            print('<td>%s</td>' % d, end=' ')
+        print('</tr>')
+
+def create_formatter(name):
+    if name == 'text':
+        formatter_cls = TextTableFormatter
+    elif name == 'csv':
+        formatter_cls = CSVTableFormatter
+    elif name == 'html':
+        formatter_cls = HTMLTableFormatter
+    else:
+        raise RuntimeError('Unknown format %s' % name)
+    return formatter_cls()
+
+
+
+
+
+```
+

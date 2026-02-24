@@ -1,0 +1,343 @@
+\[ [Index](index.md) | [Exercise 3.7](ex3_7.md) | [Exercise 4.1](ex4_1.md) \]
+
+# Exercise 3.8
+
+*Objectives:*
+
+- Learn about mixin classes and cooperative inheritance
+
+*Files Modified:* `tableformat.py`
+
+## (a) The Trouble with Column Formatting
+
+If you go all the way back to [Exercise 3.1](ex3_1.md), you 
+wrote a function `print_portfolio()` that produced a table like this:
+
+```python
+>>> portfolio = read_portfolio('Data/portfolio.csv')
+>>> print_portfolio(portfolio)
+      name     shares      price
+`...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+```python
+# tableformat.py
+from abc import ABC, abstractmethod
+
+def print_table(records, fields, formatter):
+    if not isinstance(formatter, TableFormatter):
+        raise RuntimeError('Expected a TableFormatter')
+
+    formatter.headings(fields)
+    for r in records:
+        rowdata = [getattr(r, fieldname) for fieldname in fields]
+        formatter.row(rowdata)
+
+class TableFormatter(ABC):
+    @abstractmethod
+    def headings(self, headers):
+        pass
+
+    @abstractmethod
+    def row(self, rowdata):
+        pass
+
+
+class TextTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print(' '.join('%10s' % h for h in headers))
+        print(('-'*10 + ' ')*len(headers))
+    
+    def row(self, rowdata):
+        print(' '.join('%10s' % d for d in rowdata))
+
+class CSVTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print(','.join(headers))
+
+    def row(self, rowdata):
+        print(','.join(str(d) for d in rowdata))
+
+class HTMLTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print('<tr>', end=' ')
+        for h in headers:
+            print('<th>%s</th>' % h, end=' ')
+        print('</tr>')
+
+    def row(self, rowdata):
+        print('<tr>', end=' ')
+        for d in rowdata:
+            print('<td>%s</td>' % d, end=' ')
+        print('</tr>')
+
+
+class ColumnFormatMixin:
+    formats = []
+    def row(self, rowdata):
+        rowdata = [ (fmt % item) for fmt, item in zip(self.formats, rowdata)]
+        super().row(rowdata)
+
+class UpperHeadersMixin:
+    def headings(self, headers):
+        super().headings([h.upper() for h in headers])
+
+def create_formatter(name, column_formats=None, upper_headers=False):
+    if name == 'text':
+        formatter_cls = TextTableFormatter
+    elif name == 'csv':
+        formatter_cls = CSVTableFormatter
+    elif name == 'html':
+        formatter_cls = HTMLTableFormatter
+    else:
+        raise RuntimeError('Unknown format %s' % name)
+
+    if column_formats:
+        class formatter_cls(ColumnFormatMixin, formatter_cls):
+              formats = column_formats
+
+    if upper_headers:
+        class formatter_cls(UpperHeadersMixin, formatter_cls):
+            pass
+
+    return formatter_cls()
+```
+
+
+
+
+
+## Solution Code
+
+### reader.py
+
+```python
+# reader.py
+
+import csv
+from abc import ABC, abstractmethod
+
+class CSVParser(ABC):
+
+    def parse(self, filename):
+        records = []
+        with open(filename) as f:
+            rows = csv.reader(f)
+            headers = next(rows)
+            for row in rows:
+                record = self.make_record(headers, row)
+                records.append(record)
+        return records
+
+    @abstractmethod
+    def make_record(self, headers, row):
+        pass
+
+class DictCSVParser(CSVParser):
+    def __init__(self, types):
+        self.types = types
+
+    def make_record(self, headers, row):
+        return { name: func(val) for name, func, val in zip(headers, self.types, row) }
+
+class InstanceCSVParser(CSVParser):
+    def __init__(self, cls):
+        self.cls = cls
+
+    def make_record(self, headers, row):
+        return self.cls.from_row(row)
+
+def read_csv_as_dicts(filename, types):
+    parser = DictCSVParser(types)
+    return parser.parse(filename)
+
+def read_csv_as_instances(filename, cls):
+    parser = InstanceCSVParser(cls)
+    return parser.parse(filename)
+
+```
+
+### stock.py
+
+```python
+# stock.py
+
+class Stock:
+    __slots__ = ('name','_shares','_price')
+    _types = (str, int, float)
+    def __init__(self, name, shares, price):
+        self.name = name
+        self.shares = shares
+        self.price = price
+
+    def __repr__(self):
+        # Note: The !r format code produces the repr() string
+        return f'{type(self).__name__}({self.name!r}, {self.shares!r}, {self.price!r})'
+
+    def __eq__(self, other):
+        return isinstance(other, Stock) and ((self.name, self.shares, self.price) ==
+                (other.name, other.shares, other.price))
+
+    @classmethod
+    def from_row(cls, row):
+        values = [func(val) for func, val in zip(cls._types, row)]
+        return cls(*values)
+
+    @property
+    def shares(self):
+        return self._shares
+    @shares.setter
+    def shares(self, value):
+        if not isinstance(value, self._types[1]):
+            raise TypeError(f'Expected {self._types[1].__name__}')
+        if value < 0:
+            raise ValueError('shares must be >= 0')
+        self._shares = value
+
+    @property
+    def price(self):
+        return self._price
+    @price.setter
+    def price(self, value):
+        if not isinstance(value, self._types[2]):
+            raise TypeError(f'Expected {self._types[2].__name__}')
+        if value < 0:
+            raise ValueError('price must be >= 0')
+        self._price = value
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+
+# Sample
+if __name__ == '__main__':
+    import tableformat
+    import reader
+    from tableformat import (
+        print_table,
+        create_formatter,
+        TextTableFormatter,
+        ColumnFormatMixin,
+        UpperHeadersMixin
+        )
+
+    portfolio = reader.read_csv_as_instances('../../Data/portfolio.csv', Stock)
+
+    class PortfolioFormatter(ColumnFormatMixin, TextTableFormatter):
+        formats = ['%s','%d','%0.2f']
+
+    formatter = PortfolioFormatter()
+    print_table(portfolio,['name','shares','price'], formatter)
+
+    class PortfolioFormatter(UpperHeadersMixin, TextTableFormatter):
+        pass
+
+    formatter = PortfolioFormatter()
+    print_table(portfolio, ['name','shares','price'], formatter)
+
+    # Factory function version
+    formatter = create_formatter('text', column_formats=['%s','%d','%0.2f'])
+    print_table(portfolio, ['name','shares','price'], formatter)
+
+    formatter = create_formatter('text', upper_headers=True)
+    print_table(portfolio, ['name','shares','price'], formatter)
+
+```
+
+### tableformat.py
+
+```python
+# tableformat.py
+from abc import ABC, abstractmethod
+
+def print_table(records, fields, formatter):
+    if not isinstance(formatter, TableFormatter):
+        raise TypeError('Expected a TableFormatter')
+
+    formatter.headings(fields)
+    for r in records:
+        rowdata = [getattr(r, fieldname) for fieldname in fields]
+        formatter.row(rowdata)
+
+class TableFormatter(ABC):
+    @abstractmethod
+    def headings(self, headers):
+        pass
+
+    @abstractmethod
+    def row(self, rowdata):
+        pass
+
+
+class TextTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print(' '.join('%10s' % h for h in headers))
+        print(('-'*10 + ' ')*len(headers))
+    
+    def row(self, rowdata):
+        print(' '.join('%10s' % d for d in rowdata))
+
+class CSVTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print(','.join(headers))
+
+    def row(self, rowdata):
+        print(','.join(str(d) for d in rowdata))
+
+class HTMLTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print('<tr>', end=' ')
+        for h in headers:
+            print('<th>%s</th>' % h, end=' ')
+        print('</tr>')
+
+    def row(self, rowdata):
+        print('<tr>', end=' ')
+        for d in rowdata:
+            print('<td>%s</td>' % d, end=' ')
+        print('</tr>')
+
+class ColumnFormatMixin:
+    formats = []
+    def row(self, rowdata):
+        rowdata = [ (fmt % item) for fmt, item in zip(self.formats, rowdata)]
+        super().row(rowdata)
+
+class UpperHeadersMixin:
+    def headings(self, headers):
+        super().headings([h.upper() for h in headers])
+
+def create_formatter(name, column_formats=None, upper_headers=False):
+    if name == 'text':
+        formatter_cls = TextTableFormatter
+    elif name == 'csv':
+        formatter_cls = CSVTableFormatter
+    elif name == 'html':
+        formatter_cls = HTMLTableFormatter
+    else:
+        raise RuntimeError('Unknown format %s' % name)
+
+    if column_formats:
+        class formatter_cls(ColumnFormatMixin, formatter_cls):
+              formats = column_formats
+
+    if upper_headers:
+        class formatter_cls(UpperHeadersMixin, formatter_cls):
+            pass
+
+    return formatter_cls()
+
+
+
+
+
+```
+

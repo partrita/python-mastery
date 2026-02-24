@@ -1,0 +1,3 @@
+# Metaprogramming
+
+This section covers exercises for Metaprogramming.

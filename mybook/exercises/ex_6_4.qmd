@@ -1,0 +1,331 @@
+\[ [Index](index.md) | [Exercise 6.3](ex6_3.md) | [Exercise 6.5](ex6_5.md) \]
+
+# Exercise 6.4
+
+*Objectives:*
+
+- Learn to create code with `exec()`
+
+## (a) Experiment with exec()
+
+Define a fragment of Python code in a string and try running it:
+
+```python
+>>> code = '''
+for i in range(n):
+    print(i, end=' ')
+'''
+>>> n = 10
+>>> exec(code)
+0 1 2 3 4 5 6 7 8 9
+>>>
+```
+
+That's interesting, but executing random code fragments is not
+especially useful. A more interesting use of `exec()` is in making
+code such as functions, methods, or classes.  Try this example in
+which we make an `__init__()` function for a class.
+
+```python
+>>> class Stock:
+        _fields = ('name', 'shares', 'price')
+
+>>> argstr = ','.join(Stock._fields)
+>>> code = f'def __init__(self, {argstr}):\n'
+>>> for name in Stock._fields:
+        code += f'    self.{name} = {name}\n'
+>>> print(code)
+def __init__(self, name,shares,price):
+    self.name = name
+    self.shares = shares
+    self.price = price
+
+>>> locs = { }
+>>> exec(code, locs)
+>>> Stock.__init__ = locs['__init__']
+
+>>> # Now try the class
+>>> s = Stock('GOOG', 100, 490.1)
+>>> s.name
+'GOOG'
+>>> s.shares
+100
+>>> s.price
+490.1
+>>> 
+```
+
+In this example, an `__init__()` function is made directly from the `_fields` variable.  
+There are no weird hacks involving a special `_init()` method or stack frames.
+
+## (b) Creating an `__init__()` function
+
+In [Exercise 6.3](ex6_3.md), you wrote code that inspected the
+signature of the `__init__()` method to set the attribute names
+in a `_fields` class variable.   For example:
+
+```python
+class Stock(Structure):
+    def __init__(self, name, shares, price):
+        self._init()
+
+Stock.set_fields()
+```
+
+Instead of inspecting the `__init__()` method, write a class method
+`create_init(cls)` that creates an `__init__()` method from the value of
+`_fields`.  Use the `exec()` function to do this as shown above. 
+Here's how a user will use it:
+
+```python
+class Stock(Structure):
+    _fields = ('name', 'shares', 'price')
+
+Stock.create_init()
+```
+
+The resulting class should work exactly the name way as before:
+
+```python
+>>> s = Stock(name='GOOG', shares=100, price=490.1)
+>>> s
+Stock('GOOG',100,490.1)
+>>> s.shares = 50
+>>> s.share = 50
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "structure.py", line 12, in __setattr__
+    raise AttributeError('No attribute %s' % name)
+AttributeError: No attribute share
+>>> 
+```
+
+Modify the `Stock` class in progress to use the `create_init()` function as shown.  
+Verify with your unit tests as before.
+
+While you're at it, get rid of the `_init()` and `set_fields()`
+methods on the `Structure` class--that approach was kind of weird.
+
+## (c) Named Tuples
+
+In [Exercise 2.1](ex2_1.md), you experimented with `namedtuple` objects
+in the `collections` module.  Just to refresh your memory, here is how
+they worked:
+
+```python
+>>> from collections import namedtuple
+>>> Stock = namedtuple('Stock', ['name', 'shares', 'price'])
+>>> s = Stock('GOOG', 100, 490.1)
+>>> s.name
+'GOOG'
+>>> s.shares
+100
+>>> s[1]
+100
+>>>
+```
+
+Under the covers, the `namedtuple()` function is creating code as a string
+and executing it using `exec()`.   Look at the code and marvel:
+
+```python
+>>> import inspect
+>>> print(inspect.getsource(namedtuple))
+... look at the output ...
+>>>
+```
+
+\[ [Solution](soln6_4.md) | [Index](index.md) | [Exercise 6.3](ex6_3.md) | [Exercise 6.5](ex6_5.md) \]
+
+`...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+```python
+# structure.py
+
+class Structure:
+    _fields = ()
+
+    def __setattr__(self, name, value):
+        if name.startswith('_') or name in self._fields:
+            super().__setattr__(name, value)
+        else:
+            raise AttributeError('No attribute %s' % name)
+
+    def __repr__(self):
+        return '%s(%s)' % (type(self).__name__,
+                           ', '.join(repr(getattr(self, name)) for name in self._fields))
+
+    @classmethod
+    def create_init(cls):
+        args = ','.join(cls._fields)
+        code = 'def __init__(self, {0}):\n'.format(args)
+        statements = [ '    self.{0} = {0}'.format(name) for name in cls._fields]
+        code += '\n'.join(statements)
+        locs = { }
+        exec(code, locs)
+        cls.__init__ = locs['__init__']
+```
+
+Here is the `Stock` class in progress after this change:
+
+```python
+# stock.py
+
+from structure import Structure
+
+class Stock(Structure):
+    _fields = ('name', 'shares', 'price')
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+
+Stock.create_init()
+```
+
+
+
+
+
+## Solution Code
+
+### stock.py
+
+```python
+# stock.py
+
+from structure import Structure
+
+class Stock(Structure):
+    _fields = ('name', 'shares', 'price')
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+
+Stock.create_init()
+
+
+```
+
+### structure.py
+
+```python
+# structure.py
+
+class Structure:
+    _fields = ()
+
+    def __setattr__(self, name, value):
+        if name.startswith('_') or name in self._fields:
+            super().__setattr__(name, value)
+        else:
+            raise AttributeError('No attribute %s' % name)
+
+    def __repr__(self):
+        return '%s(%s)' % (type(self).__name__,
+                           ', '.join(repr(getattr(self, name)) for name in self._fields))
+
+    @classmethod
+    def create_init(cls):
+        '''
+        Create an __init__ method from _fields
+        '''
+        args = ','.join(cls._fields)
+        code = f'def __init__(self, {args}):\n'
+        for name in cls._fields:
+            code += f'    self.{name} = {name}\n'
+        locs = { }
+        exec(code, locs)
+        cls.__init__ = locs['__init__']
+
+```
+
+### teststock.py
+
+```python
+# teststock.py
+
+import stock
+import unittest
+
+class TestStock(unittest.TestCase):
+    def test_create(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_create_keyword(self):
+        s = stock.Stock(name='GOOG', shares=100, price=490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+        
+    def test_cost(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.cost, 49010.0)
+
+    def test_sell(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        s.sell(25)
+        self.assertEqual(s.shares, 75)
+
+    def test_from_row(self):
+        s = stock.Stock.from_row(['GOOG','100','490.1'])
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_repr(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(repr(s), "Stock('GOOG', 100, 490.1)")
+
+    def test_eq(self):
+        a = stock.Stock('GOOG', 100, 490.1)
+        b = stock.Stock('GOOG', 100, 490.1)
+        self.assertTrue(a==b)
+
+    # Tests for failure conditions
+    def test_shares_badtype(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(TypeError):
+            s.shares = '50'
+
+    def test_shares_badvalue(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(ValueError):
+            s.shares = -50
+
+    def test_price_badtype(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(TypeError):
+            s.price = '45.23'
+
+    def test_price_badvalue(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(ValueError):
+            s.price = -45.23
+
+    def test_bad_attribute(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(AttributeError):
+            s.share = 100
+
+if __name__ == '__main__':
+    unittest.main()
+
+```
+

@@ -1,0 +1,248 @@
+\[ [Index](index.md) | [Exercise 5.1](ex5_1.md) | [Exercise 5.3](ex5_3.md) \]
+
+# Exercise 5.2
+
+*Objectives:*
+
+- Returning values from functions
+
+In this exercise, we briefly look at problems related to returning values from functions.
+At first glance, it seems like this should be straightforward, but there are some
+subtle problems that arise.
+
+## (a) Returning Multiple Values
+
+Suppose you were writing code to parse configuration files consisting of lines like this:
+
+    name=value
+
+Write a function `parse_line(line)` that takes such a line and returns both the associated name and 
+value.  The common convention for returning multiple values is to return them in a tuple.  For example:
+
+```python
+>>> parse_line('email=guido@python.org')
+('email', 'guido@python.org')
+>>> name, val = parse_line('email=guido@python.org')
+>>> name
+'email'
+>>> val
+'guido@python.org'
+>>>
+```
+
+## (b) Returning Optional Values
+
+Sometimes a function might return an optional value--possibly as a mechanism for indicating 
+success or failure.  The most common convention is to use `None` as a representation for 
+a missing value.  Modify the `parse_line()` function above so that it either returns a tuple 
+on success or `None` on bad data.  For example:
+
+```python
+>>> parse_line('email=guido@python.org')
+('email', 'guido@python.org')
+>>> parse_line('spam')       # Returns None
+>>>
+```
+
+Design discussion:  Would it be better for the `parse_line()` function to raise an exception
+on malformed data?
+
+## (c) Futures
+
+Sometimes Python code executes concurrently via threads or processes.  To illustrate, try
+this example:
+
+```python
+>>> import time
+>>> def worker(x, y):
+        print('About to work')
+        time.sleep(20)
+        print('Done')
+        return x + y
+
+>>> worker(2, 3)     # Normal function call
+About to work  
+Done
+5
+>>>
+```
+
+Now, launch `worker()` into a separate thread:
+
+```python
+>>> import threading
+>>> t = threading.Thread(target=worker, args=(2, 3))
+>>> t.start()
+About to work
+>>>
+Done
+```
+
+Carefully notice that the result of the calculation appears nowhere. Not only that, you don't even
+know when it's going to be completed.   There is a certain coordination problem here. The
+convention for handling this case is to wrap the result of a function in a `Future`.  A
+`Future` represents a future result. Here's how it works:
+
+```python
+>>> from concurrent.futures import Future
+>>> # Wrapper around the function to use a future
+>>> def do_work(x, y, fut):
+        fut.set_result(worker(x,y))
+
+>>> fut = Future()
+>>> t = threading.Thread(target=do_work, args=(2, 3, fut))
+>>> t.start()
+About to work  
+>>> result = fut.result()
+Done
+>>> result
+5
+>>>
+```
+
+You'll see this kind of pattern a lot of if working with thread pools, processes, and other
+constructs.  For example:
+
+```python
+>>> from concurrent.futures import ThreadPoolExecutor
+>>> pool = ThreadPoolExecutor()
+>>> fut = pool.submit(worker, 2, 3)
+About to work
+>>> fut
+<Future at 0x102157080 state=running>
+>>> fut.result()
+Done
+5
+>>>
+```
+
+\[ [Solution](soln5_2.md) | [Index](index.md) | [Exercise 5.1](ex5_1.md) | [Exercise 5.3](ex5_3.md) \]
+
+`...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+None. Just work through the exercise.
+
+
+
+
+
+## Solution Code
+
+### reader.py
+
+```python
+# reader.py
+
+from abc import ABC, abstractmethod
+import csv
+import logging
+log = logging.getLogger(__name__)
+
+class CSVParser(ABC):
+
+    def parse(self, filename):
+        records = []
+        with open(filename) as f:
+            rows = csv.reader(f)
+            headers = next(rows)
+            for rowno, row in enumerate(rows, start=1):
+                try:
+                    record = self.make_record(headers, row)
+                    records.append(record)
+                except ValueError as e:
+                    log.warning('Row %d: Bad row: %s', rowno, row)
+                    log.debug('Row %d: Reason: %s', rowno, e)
+
+        return records
+
+    @abstractmethod
+    def make_record(self, headers, row):
+        raise NotImplementedError()
+
+class DictCSVParser(CSVParser):
+    def __init__(self, types):
+        self.types = types
+
+    def make_record(self, headers, row):
+        return { name: func(val) for name, func, val in zip(headers, self.types, row) }
+
+class InstanceCSVParser(CSVParser):
+    def __init__(self, cls):
+        self.cls = cls
+
+    def make_record(self, headers, row):
+        return self.cls.from_row(row)
+
+def read_csv_as_dicts(filename, types):
+    parser = DictCSVParser(types)
+    return parser.parse(filename)
+
+def read_csv_as_instances(filename, cls):
+    parser = InstanceCSVParser(cls)
+    return parser.parse(filename)
+
+```
+
+### stock.py
+
+```python
+# stock.py
+
+class Stock:
+    __slots__ = ('name','_shares','_price')
+    _types = (str, int, float)
+    def __init__(self, name, shares, price):
+        self.name = name
+        self.shares = shares
+        self.price = price
+
+    def __repr__(self):
+        # Note: The !r format code produces the repr() string
+        return f'{type(self).__name__}({self.name!r}, {self.shares!r}, {self.price!r})'
+
+    def __eq__(self, other):
+        return isinstance(other, Stock) and ((self.name, self.shares, self.price) ==
+                (other.name, other.shares, other.price))
+
+    @classmethod
+    def from_row(cls, row):
+        values = [func(val) for func, val in zip(cls._types, row)]
+        return cls(*values)
+
+    @property
+    def shares(self):
+        return self._shares
+    @shares.setter
+    def shares(self, value):
+        if not isinstance(value, self._types[1]):
+            raise TypeError(f'Expected {self._types[1].__name__}')
+        if value < 0:
+            raise ValueError('shares must be >= 0')
+        self._shares = value
+
+    @property
+    def price(self):
+        return self._price
+    @price.setter
+    def price(self, value):
+        if not isinstance(value, self._types[2]):
+            raise TypeError(f'Expected {self._types[2].__name__}')
+        if value < 0:
+            raise ValueError('price must be >= 0')
+        self._price = value
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+
+```
+

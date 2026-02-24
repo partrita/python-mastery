@@ -1,5 +1,8 @@
 project:
   type: book
+  resources:
+    - "../Data/*"
+    - "images/*"
 
 book:
   title: "python-mastery"
@@ -8,9 +11,86 @@ book:
   chapters:
     - index.qmd
     - intro.qmd
+    - part: "Python Review"
+      chapters:
+        - exercises/section_1.qmd
+        - exercises/ex_1_1.qmd
+        - exercises/ex_1_2.qmd
+        - exercises/ex_1_3.qmd
+        - exercises/ex_1_4.qmd
+        - exercises/ex_1_5.qmd
+        - exercises/ex_1_6.qmd
+    - part: "Data Handling"
+      chapters:
+        - exercises/section_2.qmd
+        - exercises/ex_2_1.qmd
+        - exercises/ex_2_2.qmd
+        - exercises/ex_2_3.qmd
+        - exercises/ex_2_4.qmd
+        - exercises/ex_2_5.qmd
+        - exercises/ex_2_6.qmd
+    - part: "Classes and Objects"
+      chapters:
+        - exercises/section_3.qmd
+        - exercises/ex_3_1.qmd
+        - exercises/ex_3_2.qmd
+        - exercises/ex_3_3.qmd
+        - exercises/ex_3_4.qmd
+        - exercises/ex_3_5.qmd
+        - exercises/ex_3_6.qmd
+        - exercises/ex_3_7.qmd
+        - exercises/ex_3_8.qmd
+    - part: "Inside Python Objects"
+      chapters:
+        - exercises/section_4.qmd
+        - exercises/ex_4_1.qmd
+        - exercises/ex_4_2.qmd
+        - exercises/ex_4_3.qmd
+        - exercises/ex_4_4.qmd
+    - part: "Functions, Errors, and Testing"
+      chapters:
+        - exercises/section_5.qmd
+        - exercises/ex_5_1.qmd
+        - exercises/ex_5_2.qmd
+        - exercises/ex_5_3.qmd
+        - exercises/ex_5_4.qmd
+        - exercises/ex_5_5.qmd
+        - exercises/ex_5_6.qmd
+    - part: "Working with Code"
+      chapters:
+        - exercises/section_6.qmd
+        - exercises/ex_6_1.qmd
+        - exercises/ex_6_2.qmd
+        - exercises/ex_6_3.qmd
+        - exercises/ex_6_4.qmd
+        - exercises/ex_6_5.qmd
+    - part: "Metaprogramming"
+      chapters:
+        - exercises/section_7.qmd
+        - exercises/ex_7_1.qmd
+        - exercises/ex_7_2.qmd
+        - exercises/ex_7_3.qmd
+        - exercises/ex_7_4.qmd
+        - exercises/ex_7_5.qmd
+        - exercises/ex_7_6.qmd
+    - part: "Iterators, Generators, and Coroutines"
+      chapters:
+        - exercises/section_8.qmd
+        - exercises/ex_8_1.qmd
+        - exercises/ex_8_2.qmd
+        - exercises/ex_8_3.qmd
+        - exercises/ex_8_4.qmd
+        - exercises/ex_8_5.qmd
+        - exercises/ex_8_6.qmd
+    - part: "Modules and Packages"
+      chapters:
+        - exercises/section_9.qmd
+        - exercises/ex_9_1.qmd
+        - exercises/ex_9_2.qmd
+        - exercises/ex_9_3.qmd
+        - exercises/ex_9_4.qmd
     - summary.qmd
     - references.qmd
-
 bibliography: references.bib
 
 format:

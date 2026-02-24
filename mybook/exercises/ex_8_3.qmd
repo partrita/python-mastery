@@ -1,0 +1,684 @@
+\[ [Index](index.md) | [Exercise 8.2](ex8_2.md) | [Exercise 8.4](ex8_4.md) \]
+
+# Exercise 8.3
+
+*Objectives:*
+
+- Using coroutines to set up processing pipelines
+
+*Files Created:* `cofollow.py`, `coticker.py`
+
+**Note**
+
+For this exercise the `stocksim.py` program should still be
+running in the background.  
+
+In [Exercise 8.2](ex8_2.md) you wrote some code that used
+generators to set up a processing pipeline.  A key aspect of that
+program was the idea of data flowing between generator functions.  A
+very similar kind of dataflow can be set up using coroutines.  The
+only difference is that with a coroutine, you send data into different
+processing elements as opposed to pulling data out with a for-loop.
+
+## (a) A coroutine example
+
+Getting started with coroutines can be a little tricky.  Here is an
+example program that performs the same task as
+[Exercise 8.2](ex8_2.md), but with coroutines.  Take this program
+and copy it into a file called `cofollow.py`.
+
+```python
+# cofollow.py
+import os
+import time
+
+# Data source
+def follow(filename,target):
+    with open(filename,'r') as f:
+        f.seek(0,os.SEEK_END)
+        while True:
+            line = f.readline()
+            if line != '':
+                target.send(line)
+            else:
+                time.sleep(0.1)
+
+# Decorator for coroutine functions
+from functools import wraps
+
+def consumer(func):
+    @wraps(func)
+    def start(*args,**kwargs):
+        f = func(*args,**kwargs)
+        f.send(None)
+        return f
+    return start
+
+# Sample coroutine
+@consumer
+def printer():
+    while True:
+        item = yield     # Receive an item sent to me
+        print(item)
+
+# Example use
+if __name__ == '__main__':
+    follow('Data/stocklog.csv',printer())
+```
+
+Run this program and make sure produces output..   Make sure you understand how the different pieces are hooked together.
+
+## (b) Build some pipeline components
+
+In a file `coticker.py`, build a series of pipeline components that carry out the same tasks as
+the `ticker.py` program in [Exercise 8.2](ex8_2.md).  Here is the implementation of the
+various pieces.
+
+```python
+# coticker.py
+from structure import Structure
+
+class Ticker(Structure):
+    name = String()
+    price =Float()
+    date = String()
+    time = String()
+    change = Float()
+    open = Float()
+    high = Float()
+    low = Float()
+    volume = Integer()
+
+from cofollow import consumer, follow
+from tableformat import create_formatter
+import csv
+
+# This one is tricky. See solution for notes about it
+@consumer
+def to_csv(target):
+    def producer():
+        while True:
+            yield line
+
+    reader = csv.reader(producer())
+    while True:
+        line = yield
+        target.send(next(reader))
+
+@consumer
+def create_ticker(target):
+    while True:
+        row = yield
+        target.send(Ticker.from_row(row))
+
+@consumer
+def negchange(target):
+    while True:
+        record = yield
+        if record.change < 0:
+            target.send(record)
+
+@consumer
+def ticker(fmt, fields):
+    formatter = create_formatter(fmt)
+    formatter.headings(fields)
+    while True:
+        rec = yield
+        row = [getattr(rec, name) for name in fields]
+        formatter.row(row)
+```
+
+Your challenge: Write the main program that hooks all of these components together to 
+generate the same stock ticker as in the previous exercise.
+
+\[ [Solution](soln8_3.md) | [Index](index.md) | [Exercise 8.2](ex8_2.md) | [Exercise 8.4](ex8_4.md) \]
+
+`...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+```python
+# coticker.py
+from structure import Structure
+from validate import String, Integer, Float
+
+class Ticker(Structure):
+    name = String()
+    price = Float()
+    date = String()
+    time = String()
+    change = Float()
+    open = Float()
+    high = Float()
+    low = Float()
+    volume = Integer()
+
+from cofollow import consumer, follow
+from tableformat import create_formatter
+import csv
+
+# Coroutine that splits rows using the CSV module.  This is rather
+# mind-bending due to the fact that the csv module only understands
+# iteration with the for-loop.  To make it work, we wrap it around
+# a generator that simply produces the last item received.
+
+@consumer
+def to_csv(target):
+    def producer():
+        while True:
+            yield line
+
+    reader = csv.reader(producer())
+    while True:
+        line = yield
+        target.send(next(reader))
+
+@consumer
+def create_ticker(target):
+    while True:
+        row = yield
+        target.send(Ticker.from_row(row))
+
+@consumer
+def negchange(target):
+    while True:
+        record = yield
+        if record.change < 0:
+            target.send(record)
+
+@consumer
+def ticker(fmt, fields):
+    formatter = create_formatter(fmt)
+    formatter.headings(fields)
+    while True:
+        rec = yield
+        row = [getattr(rec, name) for name in fields]
+        formatter.row(row)
+
+if __name__ == '__main__':
+    follow('Data/stocklog.csv',
+           to_csv(
+           create_ticker(
+           negchange(
+           ticker('text', ['name','price','change'])))))
+```
+
+
+
+
+
+## Solution Code
+
+### cofollow.py
+
+```python
+# cofollow.py
+import os
+import time
+
+def follow(filename, target):
+    with open(filename, 'r') as f:
+        f.seek(0,os.SEEK_END)
+        while True:
+            line = f.readline()
+            if line != '':
+                target.send(line)
+            else:
+                time.sleep(0.1)
+
+# Decorator for coroutines
+from functools import wraps
+
+def consumer(func):
+    @wraps(func)
+    def start(*args,**kwargs):
+        f = func(*args,**kwargs)
+        f.send(None)
+        return f
+    return start
+
+# Sample coroutine
+@consumer
+def printer():
+    while True:
+        item = yield
+        print(item)
+
+# Example use.  
+
+if __name__ == '__main__':
+    follow('../../Data/stocklog.csv', printer())
+
+```
+
+### coticker.py
+
+```python
+# coticker.py
+from structure import Structure
+
+class Ticker(Structure):
+    name = String()
+    price = Float()
+    date = String()
+    time = String()
+    change = Float()
+    open = Float()
+    high = Float()
+    low = Float()
+    volume = Integer()
+
+from cofollow import consumer, follow
+from tableformat import create_formatter
+import csv
+
+@consumer
+def to_csv(target):
+    def producer():
+        while True:
+            yield line
+
+    reader = csv.reader(producer())
+    while True:
+        line = yield
+        target.send(next(reader))
+
+@consumer
+def create_ticker(target):
+    while True:
+        row = yield
+        target.send(Ticker.from_row(row))
+
+@consumer
+def negchange(target):
+    while True:
+        record = yield
+        if record.change < 0:
+            target.send(record)
+
+@consumer
+def ticker(fmt, fields):
+    formatter = create_formatter(fmt)
+    formatter.headings(fields)
+    while True:
+        rec = yield
+        row = [getattr(rec, name) for name in fields]
+        formatter.row(row)
+
+if __name__ == '__main__':
+    follow('../../Data/stocklog.csv',
+           to_csv(
+           create_ticker(
+           negchange(
+           ticker('text', ['name','price','change'])))))
+
+```
+
+### structure.py
+
+```python
+# structure.py
+
+from validate import Validator, validated
+from collections import ChainMap
+
+class StructureMeta(type):
+    @classmethod
+    def __prepare__(meta, clsname, bases):
+        return ChainMap({}, Validator.validators)
+        
+    @staticmethod
+    def __new__(meta, name, bases, methods):
+        methods = methods.maps[0]
+        return super().__new__(meta, name, bases, methods)
+
+class Structure(metaclass=StructureMeta):
+    _fields = ()
+    _types = ()
+
+    def __setattr__(self, name, value):
+        if name.startswith('_') or name in self._fields:
+            super().__setattr__(name, value)
+        else:
+            raise AttributeError('No attribute %s' % name)
+
+    def __repr__(self):
+        return '%s(%s)' % (type(self).__name__,
+                           ', '.join(repr(getattr(self, name)) for name in self._fields))
+
+    def __iter__(self):
+        for name in self._fields:
+            yield getattr(self, name)
+
+    def __eq__(self, other):
+        return isinstance(other, type(self)) and tuple(self) == tuple(other)
+
+    @classmethod
+    def from_row(cls, row):
+        rowdata = [ func(val) for func, val in zip(cls._types, row) ]
+        return cls(*rowdata)
+
+    @classmethod
+    def create_init(cls):
+        '''
+        Create an __init__ method from _fields
+        '''
+        args = ','.join(cls._fields)
+        code = f'def __init__(self, {args}):\n'
+        for name in cls._fields:
+            code += f'    self.{name} = {name}\n'
+        locs = { }
+        exec(code, locs)
+        cls.__init__ = locs['__init__']
+
+    @classmethod
+    def __init_subclass__(cls):
+        # Apply the validated decorator to subclasses
+        validate_attributes(cls)
+
+def validate_attributes(cls):
+    '''
+    Class decorator that scans a class definition for Validators
+    and builds a _fields variable that captures their definition order.
+    '''
+    validators = []
+    for name, val in vars(cls).items():
+        if isinstance(val, Validator):
+            validators.append(val)
+
+        # Apply validated decorator to any callable with annotations
+        elif callable(val) and val.__annotations__:
+            setattr(cls, name, validated(val))
+
+    # Collect all of the field names
+    cls._fields = tuple([v.name for v in validators])
+
+    # Collect type conversions. The lambda x:x is an identity
+    # function that's used in case no expected_type is found.
+    cls._types = tuple([ getattr(v, 'expected_type', lambda x: x)
+                   for v in validators ])
+
+    # Create the __init__ method
+    if cls._fields:
+        cls.create_init()
+
+    
+    return cls
+
+def typed_structure(clsname, **validators):
+    cls = type(clsname, (Structure,), validators)
+    return cls
+
+```
+
+### tableformat.py
+
+```python
+# tableformat.py
+from abc import ABC, abstractmethod
+
+def print_table(records, fields, formatter):
+    if not isinstance(formatter, TableFormatter):
+        raise RuntimeError('Expected a TableFormatter')
+
+    formatter.headings(fields)
+    for r in records:
+        rowdata = [getattr(r, fieldname) for fieldname in fields]
+        formatter.row(rowdata)
+
+class TableFormatter(ABC):
+    @abstractmethod
+    def headings(self, headers):
+        pass
+
+    @abstractmethod
+    def row(self, rowdata):
+        pass
+
+class TextTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print(' '.join('%10s' % h for h in headers))
+        print(('-'*10 + ' ')*len(headers))
+    
+    def row(self, rowdata):
+        print(' '.join('%10s' % d for d in rowdata))
+
+class CSVTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print(','.join(headers))
+
+    def row(self, rowdata):
+        print(','.join(str(d) for d in rowdata))
+
+class HTMLTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print('<tr>', end=' ')
+        for h in headers:
+            print('<th>%s</th>' % h, end=' ')
+        print('</tr>')
+
+    def row(self, rowdata):
+        print('<tr>', end=' ')
+        for d in rowdata:
+            print('<td>%s</td>' % d, end=' ')
+        print('</tr>')
+
+class ColumnFormatMixin:
+    formats = []
+    def row(self, rowdata):
+        rowdata = [ (fmt % item) for fmt, item in zip(self.formats, rowdata)]
+        super().row(rowdata)
+
+class UpperHeadersMixin:
+    def headings(self, headers):
+        super().headings([h.upper() for h in headers])
+
+def create_formatter(name, column_formats=None, upper_headers=False):
+    if name == 'text':
+        formatter_cls = TextTableFormatter
+    elif name == 'csv':
+        formatter_cls = CSVTableFormatter
+    elif name == 'html':
+        formatter_cls = HTMLTableFormatter
+    else:
+        raise RuntimeError('Unknown format %s' % name)
+
+    if column_formats:
+        class formatter_cls(ColumnFormatMixin, formatter_cls):
+              formats = column_formats
+
+    if upper_headers:
+        class formatter_cls(UpperHeadersMixin, formatter_cls):
+            pass
+
+    return formatter_cls()
+
+
+
+
+
+```
+
+### validate.py
+
+```python
+# validate.py
+
+class Validator:
+    def __init__(self, name=None):
+        self.name = name
+
+    def __set_name__(self, cls, name):
+        self.name = name
+
+    @classmethod
+    def check(cls, value):
+        return value
+
+    def __set__(self, instance, value):
+        instance.__dict__[self.name] = self.check(value)
+
+    # Collect all derived classes into a dict
+    validators = { }
+    @classmethod
+    def __init_subclass__(cls):
+        cls.validators[cls.__name__] = cls
+
+class Typed(Validator):
+    expected_type = object
+    @classmethod
+    def check(cls, value):
+        if not isinstance(value, cls.expected_type):
+            raise TypeError(f'expected {cls.expected_type}')
+        return super().check(value)
+
+_typed_classes = [
+    ('Integer', int),
+    ('Float', float),
+    ('String', str) ]
+
+globals().update((name, type(name, (Typed,), {'expected_type':ty}))
+                 for name, ty in _typed_classes)
+
+class Positive(Validator):
+    @classmethod
+    def check(cls, value):
+        if value < 0:
+            raise ValueError('must be >= 0')
+        return super().check(value)
+
+class NonEmpty(Validator):
+    @classmethod
+    def check(cls, value):
+        if len(value) == 0:
+            raise ValueError('must be non-empty')
+        return super().check(value)
+
+class PositiveInteger(Integer, Positive):
+    pass
+
+class PositiveFloat(Float, Positive):
+    pass
+
+class NonEmptyString(String, NonEmpty):
+    pass
+
+from inspect import signature
+from functools import wraps
+
+def isvalidator(item):
+    return isinstance(item, type) and issubclass(item, Validator)
+
+def validated(func):
+    sig = signature(func)
+
+    # Gather the function annotations
+    annotations = { name:val for name, val in func.__annotations__.items()
+                    if isvalidator(val) }
+
+    # Get the return annotation (if any)
+    retcheck = annotations.pop('return', None)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        bound = sig.bind(*args, **kwargs)
+        errors = []
+
+        # Enforce argument checks
+        for name, validator in annotations.items():
+            try:
+                validator.check(bound.arguments[name])
+            except Exception as e:
+                errors.append(f'  {name}: {e}')
+
+        if errors:
+            raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+        result = func(*args, **kwargs)
+
+        # Enforce return check (if any)
+        if retcheck:
+            try:
+                retcheck.check(result)
+            except Exception as e:
+                raise TypeError(f'Bad return: {e}') from None
+        return result
+
+    return wrapper
+
+def enforce(**annotations):
+    retcheck = annotations.pop('return_', None)
+
+    def decorate(func):
+        sig = signature(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            bound = sig.bind(*args, **kwargs)
+            errors = []
+
+            # Enforce argument checks
+            for name, validator in annotations.items():
+                try:
+                    validator.check(bound.arguments[name])
+                except Exception as e:
+                    errors.append(f'    {name}: {e}')
+
+            if errors:
+                raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+            result = func(*args, **kwargs)
+
+            if retcheck:
+                try:
+                    retcheck.check(result)
+                except Exception as e:
+                    raise TypeError(f'Bad return: {e}') from None
+            return result
+        return wrapper
+    return decorate
+
+# Examples
+if __name__ == '__main__':
+    @validated
+    def add(x:Integer, y:Integer) -> Integer:
+        return x + y
+
+    @validated
+    def div(x:Integer, y:Integer) -> Integer:
+        return x / y
+
+    @enforce(x=Integer, y=Integer)
+    def sub(x, y):
+        return x - y
+
+    class Stock:
+        name = NonEmptyString()
+        shares = PositiveInteger()
+        price = PositiveFloat()
+        def __init__(self, name, shares, price):
+            self.name = name
+            self.shares = shares
+            self.price = price
+
+        def __repr__(self):
+            return f'Stock({self.name!r}, {self.shares!r}, {self.price!r})'
+
+        @property
+        def cost(self):
+            return self.shares * self.price
+
+        @validated
+        def sell(self, nshares:PositiveInteger):
+            self.shares -= nshares
+
+    
+
+    
+
+```
+

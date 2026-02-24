@@ -1,0 +1,739 @@
+\[ [Index](index.md) | [Exercise 7.2](ex7_2.md) | [Exercise 7.4](ex7_4.md) \]
+
+# Exercise 7.3
+
+*Objectives:*
+
+- Learn about class decorators
+- Descriptors revisited
+
+*Files Modified:* `validate.py`, `structure.py`
+
+This exercise is going to pull together a bunch of topics we've
+developed over the last few days. Hang on to your hat.
+
+## (a) Descriptors Revisited
+
+In [Exercise 4.3](ex4_3.md) you defined some descriptors that
+allowed a user to define classes with type-checked attributes like
+this:
+
+```python
+from validate import String, PositiveInteger, PositiveFloat
+
+class Stock:
+    name   = String()
+    shares = PositiveInteger()
+    price  = PositiveFloat()
+    ...
+```
+
+Modify your `Stock` class so that it includes the above descriptors
+and now looks like this (see [Exercise 6.4](ex6_4.md)):
+
+```python
+# stock.py
+
+from structure import Structure
+from validate import String, PositiveInteger, PositiveFloat
+
+class Stock(Structure):
+    _fields = ('name', 'shares', 'price')
+    name = String()
+    shares = PositiveInteger()
+    price = PositiveFloat()
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+
+Stock.create_init()
+```
+
+Run the unit tests in `teststock.py`.  You should see a significant
+number of tests passing with the addition of type checking.
+Excellent.
+
+## (b) Using Class Decorators to Fill in Details
+
+An annoying aspect of the above code is there are extra details such as 
+`_fields` variable and the final step of `Stock.create_init()`.  A lot
+of this could be packaged into a class decorator instead.
+
+In the file `structure.py`, make a class decorator `@validate_attributes`
+that examines the class body for instances of Validators and fills in
+the `_fields` variable.  For example:
+
+```python
+# structure.py
+
+from validate import Validator
+
+def validate_attributes(cls):
+    validators = []
+    for name, val in vars(cls).items():
+        if isinstance(val, Validator):
+            validators.append(val)
+    cls._fields = [val.name for val in validators]
+    return cls
+```
+
+This code relies on the fact that class dictionaries are ordered
+starting in Python 3.6.  Thus, it will encounter the different
+`Validator` descriptors in the order that they're listed.  Using this
+order, you can then fill in the `_fields` variable.   This allows
+you to write code like this:
+
+```python
+# stock.py
+
+from structure import Structure, validate_attributes
+from validate import String, PositiveInteger, PositiveFloat
+
+@validate_attributes
+class Stock(Structure):
+    name = String()
+    shares = PositiveInteger()
+    price = PositiveFloat()
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+
+Stock.create_init()
+```
+
+Once you've got this working, modify the `@validate_attributes`
+decorator to additionally perform the final step of calling
+`Stock.create_init()`.   This will reduce the class to the
+following:
+
+```python
+# stock.py
+
+from structure import Structure, validate_attributes
+from validate import String, PositiveInteger, PositiveFloat
+
+@validate_attributes
+class Stock(Structure):
+    name = String()
+    shares = PositiveInteger()
+    price = PositiveFloat()
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+```
+
+## (c) Applying Decorators via Inheritance
+
+Having to specify the class decorator itself is kind of annoying.  Modify the
+`Structure` class with the following `__init_subclass__()` method:
+
+```python
+# structure.py
+
+class Structure:
+    ...
+    @classmethod
+    def __init_subclass__(cls):
+        validate_attributes(cls)
+```
+
+Once you've made this change, you should be able to drop the decorator entirely and
+solely rely on inheritance. It's inheritance plus some hidden magic!
+
+```python
+# stock.py
+
+from structure import Structure
+from validate import String, PositiveInteger, PositiveFloat
+
+class Stock(Structure):
+    name = String()
+    shares = PositiveInteger()
+    price = PositiveFloat()
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+```
+
+Now, the code is really starting to go places. In fact, it almost
+looks normal.  Let's keep pushing it.
+
+## (d) Row Conversion
+
+One missing feature from the `Structure` class is a `from_row()` method that
+allows it to work with earlier CSV reading code.   Let's fix that.  Give the
+`Structure` class a `_types` class variable and the following class method:
+
+```python
+# structure.py
+
+class Structure:
+    _types = ()
+    ...
+    @classmethod
+    def from_row(cls, row):
+        rowdata = [ func(val) for func, val in zip(cls._types, row) ]
+        return cls(*rowdata)
+    ...
+```
+
+Modify the `@validate_attributes` decorator so that it examines the
+various validators for an `expected_type` attribute and uses it to 
+fill in the `_types` variable above.
+
+Once you've done this, you should be able to do things like this:
+
+```python
+>>> s = Stock.from_row(['GOOG', '100', '490.1'])
+>>> s
+Stock('GOOG', 100, 490.1)
+>>> import reader
+>>> port = reader.read_csv_as_instances('Data/portfolio.csv', Stock)
+>>>
+```
+
+## (e) Method Argument Checking
+
+Remember that `@validated` decorator you wrote in the last part?
+Let's modify the `@validate_attributes` decorator so that any method
+in the class with annotations gets wrapped by `@validated`
+automatically.  This allows you to put enforced annotations on methods
+such as the `sell()` method:
+
+```python
+# stock.py
+
+from structure import Structure
+from validate import String, PositiveInteger, PositiveFloat
+
+class Stock(Structure):
+    name = String()
+    shares = PositiveInteger()
+    price = PositiveFloat()
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares: PositiveInteger):
+        self.shares -= nshares
+```
+
+You'll find that `sell()` now enforces the argument.
+
+```python
+>>> s = Stock('GOOG', 100, 490.1)
+>>> s.sell(25)
+>>> s.sell(-25)
+Traceback (most recent call last):
+  ...
+TypeError: Bad Arguments
+  nshares: must be >= 0
+>>>
+```
+
+Yes, this starting to get very interesting now.  The combination of a class decorator and
+inheritance is a powerful force.
+
+\[ [Solution](soln7_3.md) | [Index](index.md) | [Exercise 7.2](ex7_2.md) | [Exercise 7.4](ex7_4.md) \]
+
+`...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+Here's a full version of the `structure.py` file.   
+
+```python
+# structure.py
+
+from validate import Validator, validated
+
+class Structure:
+    _fields = ()
+    _types = ()
+
+    def __setattr__(self, name, value):
+        if name.startswith('_') or name in self._fields:
+            super().__setattr__(name, value)
+        else:
+            raise AttributeError('No attribute %s' % name)
+
+    def __repr__(self):
+        return '%s(%s)' % (type(self).__name__,
+                           ', '.join(repr(getattr(self, name)) for name in self._fields))
+
+    @classmethod
+    def from_row(cls, row):
+        rowdata = [ func(val) for func, val in zip(cls._types, row) ]
+        return cls(*rowdata)
+
+    @classmethod
+    def create_init(cls):
+        '''
+        Create an __init__ method from _fields
+        '''
+        args = ','.join(cls._fields)
+        code = f'def __init__(self, {args}):\n'
+        for name in cls._fields:
+            code += f'    self.{name} = {name}\n'
+        locs = { }
+        exec(code, locs)
+        cls.__init__ = locs['__init__']
+
+    @classmethod
+    def __init_subclass__(cls):
+        # Apply the validated decorator to subclasses
+        validate_attributes(cls)
+
+def validate_attributes(cls):
+    '''
+    Class decorator that scans a class definition for Validators
+    and builds a _fields variable that captures their definition order.
+    '''
+    validators = []
+    for name, val in vars(cls).items():
+        if isinstance(val, Validator):
+            validators.append(val)
+
+        # Apply validated decorator to any callable with annotations
+        elif callable(val) and val.__annotations__:
+            setattr(cls, name, validated(val))
+
+    # Collect all of the field names
+    cls._fields = tuple([v.name for v in validators])
+
+    # Collect type conversions. The lambda x:x is an identity
+    # function that's used in case no expected_type is found.
+    cls._types = tuple([ getattr(v, 'expected_type', lambda x: x)
+                   for v in validators ])
+
+    # Create the __init__ method
+    if cls._fields:
+        cls.create_init()
+    
+    return cls
+```
+
+
+
+
+
+## Solution Code
+
+### reader.py
+
+```python
+# reader.py
+
+import csv
+import logging
+
+log = logging.getLogger(__name__)
+
+def convert_csv(lines, converter, *, headers=None):
+    rows = csv.reader(lines)
+    if headers is None:
+        headers = next(rows)
+
+    records = []
+    for rowno, row in enumerate(rows, start=1):
+        try:
+            records.append(converter(headers, row))
+        except ValueError as e:
+            log.warning('Row %s: Bad row: %s', rowno, row)
+            log.debug('Row %s: Reason: %s', rowno, row)
+    return records
+
+def csv_as_dicts(lines, types, *, headers=None):
+    return convert_csv(lines, 
+                       lambda headers, row: { name: func(val) for name, func, val in zip(headers, types, row) })
+
+def csv_as_instances(lines, cls, *, headers=None):
+    return convert_csv(lines,
+                       lambda headers, row: cls.from_row(row))
+
+def read_csv_as_dicts(filename, types, *, headers=None):
+    '''
+    Read CSV data into a list of dictionaries with optional type conversion
+    '''
+    with open(filename) as file:
+        return csv_as_dicts(file, types, headers=headers)
+
+def read_csv_as_instances(filename, cls, *, headers=None):
+    '''
+    Read CSV data into a list of instances
+    '''
+    with open(filename) as file:
+        return csv_as_instances(file, cls, headers=headers)
+
+
+```
+
+### stock.py
+
+```python
+# stock.py
+
+from structure import Structure
+from validate import String, PositiveInteger, PositiveFloat
+
+class Stock(Structure):
+    name = String()
+    shares = PositiveInteger()
+    price = PositiveFloat()
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares: PositiveInteger):
+        self.shares -= nshares
+
+```
+
+### structure.py
+
+```python
+# structure.py
+
+from validate import Validator, validated
+
+class Structure:
+    _fields = ()
+    _types = ()
+
+    def __setattr__(self, name, value):
+        if name.startswith('_') or name in self._fields:
+            super().__setattr__(name, value)
+        else:
+            raise AttributeError('No attribute %s' % name)
+
+    def __repr__(self):
+        return '%s(%s)' % (type(self).__name__,
+                           ', '.join(repr(getattr(self, name)) for name in self._fields))
+
+    @classmethod
+    def from_row(cls, row):
+        rowdata = [ func(val) for func, val in zip(cls._types, row) ]
+        return cls(*rowdata)
+
+    @classmethod
+    def create_init(cls):
+        '''
+        Create an __init__ method from _fields
+        '''
+        args = ','.join(cls._fields)
+        code = f'def __init__(self, {args}):\n'
+        for name in cls._fields:
+            code += f'    self.{name} = {name}\n'
+        locs = { }
+        exec(code, locs)
+        cls.__init__ = locs['__init__']
+
+    @classmethod
+    def __init_subclass__(cls):
+        # Apply the validated decorator to subclasses
+        validate_attributes(cls)
+
+def validate_attributes(cls):
+    '''
+    Class decorator that scans a class definition for Validators
+    and builds a _fields variable that captures their definition order.
+    '''
+    validators = []
+    for name, val in vars(cls).items():
+        if isinstance(val, Validator):
+            validators.append(val)
+
+        # Apply validated decorator to any callable with annotations
+        elif callable(val) and val.__annotations__:
+            setattr(cls, name, validated(val))
+
+    # Collect all of the field names
+    cls._fields = tuple([v.name for v in validators])
+
+    # Collect type conversions. The lambda x:x is an identity
+    # function that's used in case no expected_type is found.
+    cls._types = tuple([ getattr(v, 'expected_type', lambda x: x)
+                   for v in validators ])
+
+    # Create the __init__ method
+    if cls._fields:
+        cls.create_init()
+
+    
+    return cls
+
+
+```
+
+### teststock.py
+
+```python
+# teststock.py
+
+import stock
+import unittest
+
+class TestStock(unittest.TestCase):
+    def test_create(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_create_keyword(self):
+        s = stock.Stock(name='GOOG', shares=100, price=490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+        
+    def test_cost(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.cost, 49010.0)
+
+    def test_sell(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        s.sell(25)
+        self.assertEqual(s.shares, 75)
+
+    def test_from_row(self):
+        s = stock.Stock.from_row(['GOOG','100','490.1'])
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_repr(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(repr(s), "Stock('GOOG', 100, 490.1)")
+
+    def test_eq(self):
+        a = stock.Stock('GOOG', 100, 490.1)
+        b = stock.Stock('GOOG', 100, 490.1)
+        self.assertTrue(a==b)
+
+    # Tests for failure conditions
+    def test_shares_badtype(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(TypeError):
+            s.shares = '50'
+
+    def test_shares_badvalue(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(ValueError):
+            s.shares = -50
+
+    def test_price_badtype(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(TypeError):
+            s.price = '45.23'
+
+    def test_price_badvalue(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(ValueError):
+            s.price = -45.23
+
+    def test_bad_attribute(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(AttributeError):
+            s.share = 100
+
+if __name__ == '__main__':
+    unittest.main()
+
+```
+
+### validate.py
+
+```python
+# validate.py
+
+class Validator:
+    def __init__(self, name=None):
+        self.name = name
+
+    def __set_name__(self, cls, name):
+        self.name = name
+
+    @classmethod
+    def check(cls, value):
+        return value
+
+    def __set__(self, instance, value):
+        instance.__dict__[self.name] = self.check(value)
+
+class Typed(Validator):
+    expected_type = object
+    @classmethod
+    def check(cls, value):
+        if not isinstance(value, cls.expected_type):
+            raise TypeError(f'expected {cls.expected_type}')
+        return super().check(value)
+
+class Integer(Typed):
+    expected_type = int
+
+class Float(Typed):
+    expected_type = float
+
+class String(Typed):
+    expected_type = str
+
+class Positive(Validator):
+    @classmethod
+    def check(cls, value):
+        if value < 0:
+            raise ValueError('must be >= 0')
+        return super().check(value)
+
+class NonEmpty(Validator):
+    @classmethod
+    def check(cls, value):
+        if len(value) == 0:
+            raise ValueError('must be non-empty')
+        return super().check(value)
+
+class PositiveInteger(Integer, Positive):
+    pass
+
+class PositiveFloat(Float, Positive):
+    pass
+
+class NonEmptyString(String, NonEmpty):
+    pass
+
+from inspect import signature
+from functools import wraps
+
+def isvalidator(item):
+    return isinstance(item, type) and issubclass(item, Validator)
+
+def validated(func):
+    sig = signature(func)
+
+    # Gather the function annotations
+    annotations = { name:val for name, val in func.__annotations__.items()
+                    if isvalidator(val) }
+
+    # Get the return annotation (if any)
+    retcheck = annotations.pop('return', None)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        bound = sig.bind(*args, **kwargs)
+        errors = []
+
+        # Enforce argument checks
+        for name, validator in annotations.items():
+            try:
+                validator.check(bound.arguments[name])
+            except Exception as e:
+                errors.append(f'  {name}: {e}')
+
+        if errors:
+            raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+        result = func(*args, **kwargs)
+
+        # Enforce return check (if any)
+        if retcheck:
+            try:
+                retcheck.check(result)
+            except Exception as e:
+                raise TypeError(f'Bad return: {e}') from None
+        return result
+
+    return wrapper
+
+def enforce(**annotations):
+    retcheck = annotations.pop('return_', None)
+
+    def decorate(func):
+        sig = signature(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            bound = sig.bind(*args, **kwargs)
+            errors = []
+
+            # Enforce argument checks
+            for name, validator in annotations.items():
+                try:
+                    validator.check(bound.arguments[name])
+                except Exception as e:
+                    errors.append(f'    {name}: {e}')
+
+            if errors:
+                raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+            result = func(*args, **kwargs)
+
+            if retcheck:
+                try:
+                    retcheck.check(result)
+                except Exception as e:
+                    raise TypeError(f'Bad return: {e}') from None
+            return result
+        return wrapper
+    return decorate
+
+# Examples
+if __name__ == '__main__':
+    @validated
+    def add(x:Integer, y:Integer) -> Integer:
+        return x + y
+
+    @validated
+    def div(x:Integer, y:Integer) -> Integer:
+        return x / y
+
+    @enforce(x=Integer, y=Integer)
+    def sub(x, y):
+        return x - y
+
+    class Stock:
+        name = NonEmptyString()
+        shares = PositiveInteger()
+        price = PositiveFloat()
+        def __init__(self, name, shares, price):
+            self.name = name
+            self.shares = shares
+            self.price = price
+
+        def __repr__(self):
+            return f'Stock({self.name!r}, {self.shares!r}, {self.price!r})'
+
+        @property
+        def cost(self):
+            return self.shares * self.price
+
+        @validated
+        def sell(self, nshares:PositiveInteger):
+            self.shares -= nshares
+
+    
+
+    
+
+```
+

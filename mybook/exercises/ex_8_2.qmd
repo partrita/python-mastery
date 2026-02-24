@@ -1,0 +1,567 @@
+\[ [Index](index.md) | [Exercise 8.1](ex8_1.md) | [Exercise 8.3](ex8_3.md) \]
+
+# Exercise 8.2
+
+*Objectives:*
+
+- Using generators to set up processing pipelines
+
+*Files Created:* `ticker.py`
+
+**Note**
+
+For this exercise the `stocksim.py` program should still be
+running in the background.  You're going to use the `follow()`
+function you wrote in the previous exercise.
+
+## (a) Setting up a processing pipeline
+
+A major power of generators is that they allow you to create programs
+that set up processing pipelines--much like pipes on Unix systems.
+Experiment with this concept by performing these steps:
+
+```python
+>>> from follow import follow
+>>> import csv
+>>> lines = follow('Data/stocklog.csv')
+>>> rows = csv.reader(lines)
+>>> for row in rows:
+        print(row)
+
+['BA', '98.35', '6/11/2007', '09:41.07', '0.16', '98.25', '98.35', '98.31', '158148']
+['AA', '39.63', '6/11/2007', '09:41.07', '-0.03', '39.67', '39.63', '39.31', '270224']
+['XOM', '82.45', '6/11/2007', '09:41.07', '-0.23', '82.68', '82.64', '82.41', '748062']
+['PG', '62.95', '6/11/2007', '09:41.08', '-0.12', '62.80', '62.97', '62.61', '454327']
+...
+```
+
+Well, that's interesting.  What you're seeing here is that the output of the
+`follow()` function has been piped into the `csv.reader()` function and we're
+now getting a sequence of split rows.   
+
+## (b) Making more pipeline components
+
+In a file `ticker.py`, define the following class (using your structure code from before) and set up
+a pipeline:
+
+```python
+# ticker.py
+
+from structure import Structure
+
+class Ticker(Structure):
+    name = String()
+    price = Float()
+    date = String()
+    time = String()
+    change = Float()
+    open = Float()
+    high = Float()
+    low = Float()
+    volume = Integer()
+
+if __name__ == '__main__':
+    from follow import follow
+    import csv
+    lines = follow('Data/stocklog.csv')
+    rows = csv.reader(lines)
+    records = (Ticker.from_row(row) for row in rows)
+    for record in records:
+        print(record)
+```
+
+When you run this, you should see some output like this:
+
+    Ticker('IBM',103.53,'6/11/2007','09:53.59',0.46,102.87,103.53,102.77,541633)
+    Ticker('MSFT',30.21,'6/11/2007','09:54.01',0.16,30.05,30.21,29.95,7562516)
+    Ticker('AA',40.01,'6/11/2007','09:54.01',0.35,39.67,40.15,39.31,576619)
+    Ticker('T',40.1,'6/11/2007','09:54.08',-0.16,40.2,40.19,39.87,1312959)
+
+## (c) Keep going
+
+Oh, you can do better than that.  Let's plug this into your table generation code. Change
+the program to the following:
+
+```python
+# ticker.py
+...
+
+if __name__ == '__main__':
+    from follow import follow
+    import csv
+    from tableformat import create_formatter, print_table
+
+    formatter = create_formatter('text')
+
+    lines = follow('Data/stocklog.csv')
+    rows = csv.reader(lines)
+    records = (Ticker.from_row(row) for row in rows)
+    negative = (rec for rec in records if rec.change < 0)
+    print_table(negative, ['name','price','change'], formatter)
+```
+
+This should produce some output that looks like this:
+
+          name      price     change 
+    `...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+```python
+# ticker.py
+from structure import Structure
+
+class Ticker(Structure):
+    name = String()
+    price = Float()
+    date = String()
+    time = String()
+    change = Float()
+    open = Float()
+    high = Float()
+    low = Float()
+    volume = Integer()
+
+if __name__ == '__main__':
+    from follow import follow
+    import csv
+    from tableformat import create_formatter, print_table
+
+    formatter = create_formatter('text')
+
+    lines = follow('Data/stocklog.csv')
+    rows = csv.reader(lines)
+    records = (Ticker.from_row(row) for row in rows)
+    negative = (rec for rec in records if rec.change < 0)
+    print_table(negative, ['name','price','change'], formatter)
+```
+
+
+
+
+
+## Solution Code
+
+### follow.py
+
+```python
+# follow.py
+import os
+import time
+import csv
+
+def follow(filename):
+    '''
+    Generator that produces a sequence of lines being written at the end of a file.
+    '''
+    with open(filename,'r') as f:
+        f.seek(0,os.SEEK_END)
+        while True:
+             line = f.readline()
+             if line == '':
+                 time.sleep(0.1)    # Sleep briefly to avoid busy wait
+                 continue
+             yield line
+
+```
+
+### structure.py
+
+```python
+# structure.py
+
+from validate import Validator, validated
+from collections import ChainMap
+
+class StructureMeta(type):
+    @classmethod
+    def __prepare__(meta, clsname, bases):
+        return ChainMap({}, Validator.validators)
+        
+    @staticmethod
+    def __new__(meta, name, bases, methods):
+        methods = methods.maps[0]
+        return super().__new__(meta, name, bases, methods)
+
+class Structure(metaclass=StructureMeta):
+    _fields = ()
+    _types = ()
+
+    def __setattr__(self, name, value):
+        if name.startswith('_') or name in self._fields:
+            super().__setattr__(name, value)
+        else:
+            raise AttributeError('No attribute %s' % name)
+
+    def __repr__(self):
+        return '%s(%s)' % (type(self).__name__,
+                           ', '.join(repr(getattr(self, name)) for name in self._fields))
+
+    def __iter__(self):
+        for name in self._fields:
+            yield getattr(self, name)
+
+    def __eq__(self, other):
+        return isinstance(other, type(self)) and tuple(self) == tuple(other)
+
+    @classmethod
+    def from_row(cls, row):
+        rowdata = [ func(val) for func, val in zip(cls._types, row) ]
+        return cls(*rowdata)
+
+    @classmethod
+    def create_init(cls):
+        '''
+        Create an __init__ method from _fields
+        '''
+        args = ','.join(cls._fields)
+        code = f'def __init__(self, {args}):\n'
+        for name in cls._fields:
+            code += f'    self.{name} = {name}\n'
+        locs = { }
+        exec(code, locs)
+        cls.__init__ = locs['__init__']
+
+    @classmethod
+    def __init_subclass__(cls):
+        # Apply the validated decorator to subclasses
+        validate_attributes(cls)
+
+def validate_attributes(cls):
+    '''
+    Class decorator that scans a class definition for Validators
+    and builds a _fields variable that captures their definition order.
+    '''
+    validators = []
+    for name, val in vars(cls).items():
+        if isinstance(val, Validator):
+            validators.append(val)
+
+        # Apply validated decorator to any callable with annotations
+        elif callable(val) and val.__annotations__:
+            setattr(cls, name, validated(val))
+
+    # Collect all of the field names
+    cls._fields = tuple([v.name for v in validators])
+
+    # Collect type conversions. The lambda x:x is an identity
+    # function that's used in case no expected_type is found.
+    cls._types = tuple([ getattr(v, 'expected_type', lambda x: x)
+                   for v in validators ])
+
+    # Create the __init__ method
+    if cls._fields:
+        cls.create_init()
+
+    
+    return cls
+
+def typed_structure(clsname, **validators):
+    cls = type(clsname, (Structure,), validators)
+    return cls
+
+```
+
+### tableformat.py
+
+```python
+# tableformat.py
+from abc import ABC, abstractmethod
+
+def print_table(records, fields, formatter):
+    if not isinstance(formatter, TableFormatter):
+        raise RuntimeError('Expected a TableFormatter')
+
+    formatter.headings(fields)
+    for r in records:
+        rowdata = [getattr(r, fieldname) for fieldname in fields]
+        formatter.row(rowdata)
+
+class TableFormatter(ABC):
+    @abstractmethod
+    def headings(self, headers):
+        pass
+
+    @abstractmethod
+    def row(self, rowdata):
+        pass
+
+class TextTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print(' '.join('%10s' % h for h in headers))
+        print(('-'*10 + ' ')*len(headers))
+    
+    def row(self, rowdata):
+        print(' '.join('%10s' % d for d in rowdata))
+
+class CSVTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print(','.join(headers))
+
+    def row(self, rowdata):
+        print(','.join(str(d) for d in rowdata))
+
+class HTMLTableFormatter(TableFormatter):
+    def headings(self, headers):
+        print('<tr>', end=' ')
+        for h in headers:
+            print('<th>%s</th>' % h, end=' ')
+        print('</tr>')
+
+    def row(self, rowdata):
+        print('<tr>', end=' ')
+        for d in rowdata:
+            print('<td>%s</td>' % d, end=' ')
+        print('</tr>')
+
+class ColumnFormatMixin:
+    formats = []
+    def row(self, rowdata):
+        rowdata = [ (fmt % item) for fmt, item in zip(self.formats, rowdata)]
+        super().row(rowdata)
+
+class UpperHeadersMixin:
+    def headings(self, headers):
+        super().headings([h.upper() for h in headers])
+
+def create_formatter(name, column_formats=None, upper_headers=False):
+    if name == 'text':
+        formatter_cls = TextTableFormatter
+    elif name == 'csv':
+        formatter_cls = CSVTableFormatter
+    elif name == 'html':
+        formatter_cls = HTMLTableFormatter
+    else:
+        raise RuntimeError('Unknown format %s' % name)
+
+    if column_formats:
+        class formatter_cls(ColumnFormatMixin, formatter_cls):
+              formats = column_formats
+
+    if upper_headers:
+        class formatter_cls(UpperHeadersMixin, formatter_cls):
+            pass
+
+    return formatter_cls()
+
+
+
+
+
+```
+
+### ticker.py
+
+```python
+# ticker.py
+from structure import Structure
+
+class Ticker(Structure):
+    name = String()
+    price = Float()
+    date = String()
+    time = String()
+    change = Float()
+    open = Float()
+    high = Float()
+    low = Float()
+    volume = Integer()
+
+if __name__ == '__main__':
+    from follow import follow
+    import csv
+    from tableformat import create_formatter, print_table
+
+    formatter = create_formatter('text')
+
+    lines = follow('../../Data/stocklog.csv')
+    rows = csv.reader(lines)
+    records = (Ticker.from_row(row) for row in rows)
+    negative = (rec for rec in records if rec.change < 0)
+    print_table(negative, ['name','price','change'], formatter)
+
+```
+
+### validate.py
+
+```python
+# validate.py
+
+class Validator:
+    def __init__(self, name=None):
+        self.name = name
+
+    def __set_name__(self, cls, name):
+        self.name = name
+
+    @classmethod
+    def check(cls, value):
+        return value
+
+    def __set__(self, instance, value):
+        instance.__dict__[self.name] = self.check(value)
+
+    # Collect all derived classes into a dict
+    validators = { }
+    @classmethod
+    def __init_subclass__(cls):
+        cls.validators[cls.__name__] = cls
+
+class Typed(Validator):
+    expected_type = object
+    @classmethod
+    def check(cls, value):
+        if not isinstance(value, cls.expected_type):
+            raise TypeError(f'expected {cls.expected_type}')
+        return super().check(value)
+
+_typed_classes = [
+    ('Integer', int),
+    ('Float', float),
+    ('String', str) ]
+
+globals().update((name, type(name, (Typed,), {'expected_type':ty}))
+                 for name, ty in _typed_classes)
+
+class Positive(Validator):
+    @classmethod
+    def check(cls, value):
+        if value < 0:
+            raise ValueError('must be >= 0')
+        return super().check(value)
+
+class NonEmpty(Validator):
+    @classmethod
+    def check(cls, value):
+        if len(value) == 0:
+            raise ValueError('must be non-empty')
+        return super().check(value)
+
+class PositiveInteger(Integer, Positive):
+    pass
+
+class PositiveFloat(Float, Positive):
+    pass
+
+class NonEmptyString(String, NonEmpty):
+    pass
+
+from inspect import signature
+from functools import wraps
+
+def isvalidator(item):
+    return isinstance(item, type) and issubclass(item, Validator)
+
+def validated(func):
+    sig = signature(func)
+
+    # Gather the function annotations
+    annotations = { name:val for name, val in func.__annotations__.items()
+                    if isvalidator(val) }
+
+    # Get the return annotation (if any)
+    retcheck = annotations.pop('return', None)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        bound = sig.bind(*args, **kwargs)
+        errors = []
+
+        # Enforce argument checks
+        for name, validator in annotations.items():
+            try:
+                validator.check(bound.arguments[name])
+            except Exception as e:
+                errors.append(f'  {name}: {e}')
+
+        if errors:
+            raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+        result = func(*args, **kwargs)
+
+        # Enforce return check (if any)
+        if retcheck:
+            try:
+                retcheck.check(result)
+            except Exception as e:
+                raise TypeError(f'Bad return: {e}') from None
+        return result
+
+    return wrapper
+
+def enforce(**annotations):
+    retcheck = annotations.pop('return_', None)
+
+    def decorate(func):
+        sig = signature(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            bound = sig.bind(*args, **kwargs)
+            errors = []
+
+            # Enforce argument checks
+            for name, validator in annotations.items():
+                try:
+                    validator.check(bound.arguments[name])
+                except Exception as e:
+                    errors.append(f'    {name}: {e}')
+
+            if errors:
+                raise TypeError('Bad Arguments\n' + '\n'.join(errors))
+
+            result = func(*args, **kwargs)
+
+            if retcheck:
+                try:
+                    retcheck.check(result)
+                except Exception as e:
+                    raise TypeError(f'Bad return: {e}') from None
+            return result
+        return wrapper
+    return decorate
+
+# Examples
+if __name__ == '__main__':
+    @validated
+    def add(x:Integer, y:Integer) -> Integer:
+        return x + y
+
+    @validated
+    def div(x:Integer, y:Integer) -> Integer:
+        return x / y
+
+    @enforce(x=Integer, y=Integer)
+    def sub(x, y):
+        return x - y
+
+    class Stock:
+        name = NonEmptyString()
+        shares = PositiveInteger()
+        price = PositiveFloat()
+        def __init__(self, name, shares, price):
+            self.name = name
+            self.shares = shares
+            self.price = price
+
+        def __repr__(self):
+            return f'Stock({self.name!r}, {self.shares!r}, {self.price!r})'
+
+        @property
+        def cost(self):
+            return self.shares * self.price
+
+        @validated
+        def sell(self, nshares:PositiveInteger):
+            self.shares -= nshares
+
+    
+
+    
+
+```
+

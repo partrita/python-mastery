@@ -1,0 +1,375 @@
+\[ [Index](index.md) | [Exercise 9.2](ex9_2.md) | [Exercise 9.4](ex9_4.md) \]
+
+# Exercise 9.3
+
+*Objectives:*
+
+- Learn about controlling symbols and combining submodules
+- Learn about module splitting
+
+One potentially annoying aspect of packages is that they complicate
+import statements.   For example, in the `stock.py` program, you now
+have import statements such as the following:
+
+```python
+from structly.structure import Structure
+from structly.reader import read_csv_as_instances
+from structly.tableformat import create_formatter, print_table
+```
+
+If the package is meant to be used as a unified whole, it might be
+more sane (and easier) to consolidate everything into a single top
+level package.   Let's do that:
+
+## (a) Controlling Exported Symbols
+
+Modify all of the submodules in the `structly` package so that they explicitly
+define an `__all__` variable which exports selected symbols.  Specifically:
+
+- `structure.py` should export `Structure`
+- `reader.py` should export all of the various `read_csv_as_*()` functions
+- `tableformat.py` exports `create_formatter()` and `print_table()`
+
+Now, in the `__init__.py` file, unify all of the submodules like this:
+
+```python
+# structly/__init__.py
+
+from .structure import *
+from .reader import *
+from .tableformat import *
+```
+
+Once you have done this, you should be able to import everything from 
+a single logical module:
+
+```python
+# stock.py
+
+from structly import Structure
+
+class Stock(Structure):
+    name = String()
+    shares = PositiveInteger()
+    price = PositiveFloat()
+    
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares: PositiveInteger):
+        self.shares -= nshares
+
+if __name__ == '__main__':
+    from structly import read_csv_as_instances, create_formatter, print_table
+    portfolio = read_csv_as_instances('Data/portfolio.csv', Stock)
+    formatter = create_formatter('text')
+    print_table(portfolio, ['name','shares','price'], formatter)
+```
+
+## (b) Exporting Everything
+
+In the `structly/__init__.py`, define an `__all__` variable that contains all
+exported symbols.   Once you've done this, you should be able to simplify the
+`stock.py` file further:
+
+```python
+# stock.py
+
+from structly import *
+
+class Stock(Structure):
+    name = String()
+    shares = PositiveInteger()
+    price = PositiveFloat()
+    
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares: PositiveInteger):
+        self.shares -= nshares
+
+if __name__ == '__main__':
+    portfolio = read_csv_as_instances('Data/portfolio.csv', Stock)
+    formatter = create_formatter('text')
+    print_table(portfolio, ['name','shares','price'], formatter)
+```
+
+As an aside, use of the `from module import *` statement is generally frowned upon
+the Python community--especially if you're not sure what you're doing.  That said,
+there are situations where it often makes sense. For example, if a package defines
+a large number of commonly used symbols or constants it might be useful to use it.
+
+
+## (c) Module Splitting
+
+The file `structly/tableformat.py` contains code for creating tables in different
+formats. Specifically:
+
+- A `TableFormatter` base class.
+- A `TextTableFormatter` class.
+- A `CSVTableFormatter` class.
+- A `HTMLTableFormatter` class.
+
+Instead of having all of these classes in a single `.py`
+file, maybe it would make sense to move each concrete formatter to
+its own file.  To do this, we're going to split the `tableformat.py`
+file into parts.  Follow these instructions carefully:
+
+First, remove the `structly/__pycache__` directory. 
+
+```
+% cd structly
+% rm -rf __pycache__
+```
+
+Next, create the directory `structly/tableformat`.  This directory
+must have exactly the same name as the module it is replacing
+(`tableformat.py`).
+
+```
+bash % mkdir tableformat
+bash %
+```
+
+Move the original `tableformat.py` file into the new
+`tableformat` directory and rename it to `formatter.py`. 
+
+```
+bash % mv tableformat.py tableformat/formatter.py
+bash %
+```
+
+In the `tableformat` directory, split the
+`tableformat.py` code into the following files and directories:
+
+- `formatter.py` - Contains the `TableFormatter` base class, mixins, and various functions.
+- `formats/text.py` - Contains the `TextTableFormatter` class.
+- `formats/csv.py` - Contains the `CSVTableFormatter` class.
+- `formats/html.py` - Contains the `HTMLTableFormatter` class.
+
+Add an `__init__.py` file to the `tableformat/` and `tableformat/formats`
+directories.  Have the `tableformat/__init__.py` export the same
+symbols that the original `tableformat.py` file exported.
+
+After you have made all of these changes, you should have a package
+structure that looks like this:
+
+```
+structly/
+      __init__.py
+      validate.py
+      reader.py
+      structure.py
+      tableformat/
+           __init__.py
+           formatter.py
+           formats/
+               __init__.py
+               text.py
+               csv.py
+               html.py
+```
+
+To users, everything should work exactly as it did before.  For example, your
+prior `stock.py` file should work:
+
+```python
+# stock.py
+
+from structly import *
+
+class Stock(Structure):
+    name = String()
+    shares = PositiveInteger()
+    price = PositiveFloat()
+    
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+
+if __name__ == '__main__':
+    portfolio = read_csv_as_instances('Data/portfolio.csv', Stock)
+    formatter = create_formatter('text')
+    print_table(portfolio, ['name','shares','price'], formatter)
+```
+
+\[ [Solution](soln9_3.md) | [Index](index.md) | [Exercise 9.2](ex9_2.md) | [Exercise 9.4](ex9_4.md) \]
+
+`...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+## (a) Controlling Exported Symbols
+
+```python
+# structure.py
+
+__all__ = ['Structure']
+...
+```
+
+```python
+# reader.py
+
+__all__ = [ 'read_csv_as_dicts',
+            'read_csv_as_instances' ]
+...
+```
+
+```python
+# tableformat.py
+
+__all__ = ['create_formatter', 'print_table']
+...
+```
+
+## (b) Exporting Everything
+
+```python
+# structly/__init__.py
+
+from .structure import *
+from .reader import *
+from .tableformat import *
+
+__all__ = [ *structure.__all__,
+	    *reader.__all__,
+	    *tableformat.__all__ ]
+```
+
+## (c) Module Splitting
+
+There are a few parts to this.   First, the individual files in `tableformat/formats` are going to
+look like this:
+
+```python
+# tableformat/formats/text.py
+from ..formatter import TableFormatter
+
+class TextTableFormatter(TableFormatter):
+    ...
+
+
+# tableformat/formats/csv.py
+from ..formatter import TableFormatter
+class CSVTableFormatter(TableFormatter):
+    ...
+
+
+# tableformat/formats/html.py
+from ..formatter import TableFormatter
+class HTMLTableFormatter(TableFormatter):
+    ...
+```
+
+The `formatter.py` file will look like this:
+
+```python
+# tableformat/formatter.py
+
+from abc import ABC, abstractmethod
+
+def print_table(records, fields, formatter):
+    if not isinstance(formatter, TableFormatter):
+        raise RuntimeError('Expected a TableFormatter')
+
+    formatter.headings(fields)
+    for r in records:
+        rowdata = [getattr(r, fieldname) for fieldname in fields]
+        formatter.row(rowdata)
+
+class TableFormatter(ABC):
+    @abstractmethod
+    def headings(self, headers):
+        pass
+
+    @abstractmethod
+    def row(self, rowdata):
+        pass
+
+from .formats.text import TextTableFormatter
+from .formats.csv import CSVTableFormatter
+from .formats.html import HTMLTableFormatter
+
+class ColumnFormatMixin:
+    formats = []
+    def row(self, rowdata):
+        rowdata = [ (fmt % item) for fmt, item in zip(self.formats, rowdata)]
+        super().row(rowdata)
+
+class UpperHeadersMixin:
+    def headings(self, headers):
+        super().headings([h.upper() for h in headers])
+
+def create_formatter(name, column_formats=None, upper_headers=False):
+    if name == 'text':
+        formatter_cls = TextTableFormatter
+    elif name == 'csv':
+        formatter_cls = CSVTableFormatter
+    elif name == 'html':
+        formatter_cls = HTMLTableFormatter
+    else:
+        raise RuntimeError('Unknown format %s' % name)
+
+    if column_formats:
+        class formatter_cls(ColumnFormatMixin, formatter_cls):
+              formats = column_formats
+
+    if upper_headers:
+        class formatter_cls(UpperHeadersMixin, formatter_cls):
+            pass
+
+    return formatter_cls()
+```
+
+Finally, you need to have a `tableformat/__init__.py` file like this:
+
+```python
+# tableformat/__init__.py
+
+from .formatter import print_table, create_formatter
+
+__all__ = [ 'print_table', 'create_formatter' ]
+```
+
+
+
+
+## Solution Code
+
+### stock.py
+
+```python
+# stock.py
+
+from structly import *
+
+class Stock(Structure):
+    name = String()
+    shares = PositiveInteger()
+    price = PositiveFloat()
+    
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares: PositiveInteger):
+        self.shares -= nshares
+
+if __name__ == '__main__':
+    portfolio = read_csv_as_instances('../../Data/portfolio.csv', Stock)
+    formatter = create_formatter('text')
+    print_table(portfolio, ['name','shares','price'], formatter)
+
+
+```
+

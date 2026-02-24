@@ -1,0 +1,312 @@
+\[ [Index](index.md) | [Exercise 5.5](ex5_5.md) | [Exercise 6.1](ex6_1.md) \]
+
+# Exercise 5.6
+
+*Objectives:*
+
+- Learn how to use Python's unittest module
+
+*Files Created:* `teststock.py`
+
+In this exercise, you will explore the basic mechanics of using
+Python's `unittest` modules.
+
+## (a) Preliminaries
+
+In previous exercises, you created a file `stock.py` that contained
+a `Stock` class.   In a separate file, `teststock.py`, define the following
+testing code:
+
+```python
+# teststock.py
+
+import unittest
+import stock
+
+class TestStock(unittest.TestCase):
+    def test_create(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+Make sure you can run the file:
+
+```
+ bash % python3 teststock.py
+ .
+ `...` Copyright 2007-2023  
+
+![](https://i.creativecommons.org/l/by-sa/4.0/88x31.png). This work is licensed under a [Creative Commons Attribution-ShareAlike 4.0 International License](http://creativecommons.org/licenses/by-sa/4.0/)
+
+---
+
+## Solution Notes
+
+## (b) Unit testing
+
+```python
+# teststock.py
+
+import stock
+import unittest
+
+class TestStock(unittest.TestCase):
+    def test_create(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_create_keyword(self):
+        s = stock.Stock(name='GOOG', shares=100, price=490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+        
+    def test_cost(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.cost, 49010.0)
+
+    def test_sell(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        s.sell(25)
+        self.assertEqual(s.shares, 75)
+
+    def test_from_row(self):
+        s = stock.Stock.from_row(['GOOG','100','490.1'])
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_repr(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(repr(s), "Stock('GOOG', 100, 490.1)")
+
+    def test_eq(self):
+        a = stock.Stock('GOOG', 100, 490.1)
+        b = stock.Stock('GOOG', 100, 490.1)
+        self.assertTrue(a==b)
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+## (c) Testing for Errors
+
+```python
+# teststock.py
+
+import stock
+import unittest
+
+class TestStock(unittest.TestCase):
+    def test_create(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_create_keyword(self):
+        s = stock.Stock(name='GOOG', shares=100, price=490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+        
+    def test_cost(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.cost, 49010.0)
+
+    def test_sell(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        s.sell(25)
+        self.assertEqual(s.shares, 75)
+
+    def test_from_row(self):
+        s = stock.Stock.from_row(['GOOG','100','490.1'])
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_repr(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(repr(s), "Stock('GOOG', 100, 490.1)")
+
+    def test_eq(self):
+        a = stock.Stock('GOOG', 100, 490.1)
+        b = stock.Stock('GOOG', 100, 490.1)
+        self.assertTrue(a==b)
+
+    # Tests for failure conditions
+    def test_shares_badtype(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(TypeError):
+            s.shares = '50'
+
+    def test_shares_badvalue(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(ValueError):
+            s.shares = -50
+
+    def test_price_badtype(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(TypeError):
+            s.price = '45.23'
+
+    def test_price_badvalue(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(ValueError):
+            s.price = -45.23
+
+    def test_bad_attribute(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(AttributeError):
+            s.share = 100
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+
+
+
+
+## Solution Code
+
+### stock.py
+
+```python
+# stock.py
+
+class Stock:
+    __slots__ = ('name','_shares','_price')
+    _types = (str, int, float)
+    def __init__(self, name, shares, price):
+        self.name = name
+        self.shares = shares
+        self.price = price
+
+    def __repr__(self):
+        # Note: The !r format code produces the repr() string
+        return f'{type(self).__name__}({self.name!r}, {self.shares!r}, {self.price!r})'
+
+    def __eq__(self, other):
+        return isinstance(other, Stock) and ((self.name, self.shares, self.price) ==
+                (other.name, other.shares, other.price))
+
+    @classmethod
+    def from_row(cls, row):
+        values = [func(val) for func, val in zip(cls._types, row)]
+        return cls(*values)
+
+    @property
+    def shares(self):
+        return self._shares
+    @shares.setter
+    def shares(self, value):
+        if not isinstance(value, self._types[1]):
+            raise TypeError(f'Expected {self._types[1].__name__}')
+        if value < 0:
+            raise ValueError('shares must be >= 0')
+        self._shares = value
+
+    @property
+    def price(self):
+        return self._price
+    @price.setter
+    def price(self, value):
+        if not isinstance(value, self._types[2]):
+            raise TypeError(f'Expected {self._types[2].__name__}')
+        if value < 0:
+            raise ValueError('price must be >= 0')
+        self._price = value
+
+    @property
+    def cost(self):
+        return self.shares * self.price
+
+    def sell(self, nshares):
+        self.shares -= nshares
+
+```
+
+### teststock.py
+
+```python
+# teststock.py
+
+import stock
+import unittest
+
+class TestStock(unittest.TestCase):
+    def test_create(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_create_keyword(self):
+        s = stock.Stock(name='GOOG', shares=100, price=490.1)
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+        
+    def test_cost(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(s.cost, 49010.0)
+
+    def test_sell(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        s.sell(25)
+        self.assertEqual(s.shares, 75)
+
+    def test_from_row(self):
+        s = stock.Stock.from_row(['GOOG','100','490.1'])
+        self.assertEqual(s.name, 'GOOG')
+        self.assertEqual(s.shares, 100)
+        self.assertEqual(s.price, 490.1)
+
+    def test_repr(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        self.assertEqual(repr(s), "Stock('GOOG', 100, 490.1)")
+
+    def test_eq(self):
+        a = stock.Stock('GOOG', 100, 490.1)
+        b = stock.Stock('GOOG', 100, 490.1)
+        self.assertTrue(a==b)
+
+    # Tests for failure conditions
+    def test_shares_badtype(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(TypeError):
+            s.shares = '50'
+
+    def test_shares_badvalue(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(ValueError):
+            s.shares = -50
+
+    def test_price_badtype(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(TypeError):
+            s.price = '45.23'
+
+    def test_price_badvalue(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(ValueError):
+            s.price = -45.23
+
+    def test_bad_attribute(self):
+        s = stock.Stock('GOOG', 100, 490.1)
+        with self.assertRaises(AttributeError):
+            s.share = 100
+
+if __name__ == '__main__':
+    unittest.main()
+
+```
+
