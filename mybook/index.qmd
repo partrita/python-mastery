@@ -1,0 +1,27 @@
+# Advanced Python Mastery
+
+David Beazley (@dabeaz)
+
+https://www.dabeaz.com
+
+Copyright (C) 2007-2024 (CC BY-SA 4.0), David Beazley
+
+# Table of Contents
+
+0. Course Setup   
+1. Python Review (Optional)   
+2. Idiomatic Data Handling   
+3. Classes and Objects   
+4. Inside Python Objects   
+5. Functions, errors, and testing   
+6. Working with Code   
+7. Metaprogramming   
+8. Iterators, Generators, and Coroutines   
+9. Modules and Packages
+
+This course is an introduction to Python's more advanced features, with a focus on how they are applied in larger applications and frameworks. The target audience is software developers and anyone who wants to take their Python skills far beyond simple script writing. A major goal of the course is to understand how you can take control over the behavior of the language itself and bend it in ways that serve the needs of your application. By the end of this course, you'll know a lot more about the magic used by frameworks, different design options, and associated tradeoffs.
+
+# About the Author
+
+David Beazley has been writing Python since 1996 and is the author of "Python Distilled" (Addison-Wesley), "Python Cookbook, 3rd Edition" (O'Reilly Media), and the "Python Programming Language: LiveLessons" video series (Addison-Wesley). He regularly teaches advanced programming and computer science courses
+

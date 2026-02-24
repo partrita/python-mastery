@@ -1,0 +1,56 @@
+# Books/Video
+
+![](images/1d2bee38ba6c33cbf76bdd30f1ce96d4f6850b51543f097e737c2643b91fdadd.jpg)
+
+![](images/6a063a7118a4552f8b0b5661f24a9a3f0660b16173e11172acce34381f361893.jpg)
+
+![](images/bf09c119d53929b8b820e269135131c81af6ccbb1087ac5f124c0a4b1b0c589c.jpg)
+
+Python Programming Language 50 reviews by David Beazley
+
+https://www.safaribooksonline.com
+
+# Course License and Usage
+
+• Official course materials are here
+
+https://github.com/dabeaz-course/python-mastery
+
+This course is released under the Creative Commons Attribution-Share Alike 4.0 International (CC-SA 4.0) license.
+
+You are free to use and adapt this material in any way that you wish as you as you give attribution to the original source. If you choose to use selected presentation slides in your own course, I kindly ask that the copyright notice, license, and authorship in the lower-left corner remain present.
+
+![](images/4f45e7285ee69f2116acbee4277a0f0581121589f52487db3565285963d57997.jpg)
+
+# About This Course
+
+Overheard:
+
+"The power of Python grows according to the skill and experience of the person using it."
+
+This course is about that!   
+Going far beyond the tutorial   
+Looking at things that you might care about if you're going to write "real" programs
+
+# Target Audience
+
+Programmers who are writing Python code that will be used by others (libraries, application frameworks, domain-specific languages, etc.)   
+• Topics strongly focus on software development
+
+• Proper usage of Python features   
+Performance tradeoffs   
+Design options
+
+# System Requirements
+
+• You should be using Python 3.6 or newer   
+Try to use the latest version   
+• You need a local development environment   
+• Any operating system is fine
+
+# Prerequisites
+
+This course assumes that you have already been using Python in some manner   
+Previously completed some kind of online tutorial, taken an introductory course, or just worked on some code yourself.   
+You should know the basics of running the interpreter and writing programs
+
